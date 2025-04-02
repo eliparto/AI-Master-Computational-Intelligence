@@ -5,5 +5,5 @@ The following files need to be put in these locations:
 ```./Revolve/revolve2-1.2.4/experimentation/revolve2/experimentation/evolution```
 ### ```_learner.py```:
 ```./Revolve/revolve2-1.2.4/experimentation/revolve2/experimentation/evolution/abstract_elements```
-### ```Iindividual.py```:
+### ```_individual.py```:
 ```./Revolve/revolve2-1.2.4/experimentation/revolve2/experimentation/optimization/ea/_individual.py```

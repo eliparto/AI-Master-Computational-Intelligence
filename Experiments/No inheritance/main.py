@@ -7,6 +7,8 @@ TO-DOs:
     - Simulation starting seems to take up a lot of time
     - Only log necessary information
     - Parametrize/Functionize learning optimizers
+    - Put DE functions in class
+    - Remove fitness calculation at initialization (we only evaluate the brain)
 """
 
 import logging
@@ -445,7 +447,7 @@ class CrossoverReproducer(Reproducer):
         """
         Initialize the reproducer.
 
-        :param rng: The ranfom generator.
+        :param rng: The random generator.
         :param innov_db_body: The innovation database for the body.
         :param innov_db_brain: The innovation database for the brain.
         """

@@ -9,6 +9,8 @@ TO-DOs:
     - Parametrize/Functionize learning optimizers
     - Put DE functions in class
     - Remove fitness calculation at initialization (we only evaluate the brain)
+    - Update evaluator in evoution.step -> change from body to brain evaluator
+        |-> Functionize evaluation process
 """
 
 import logging
@@ -480,7 +482,16 @@ class CrossoverReproducer(Reproducer):
         ]
         return offspring_genotypes
 
-            
+def findBestParents(parentPairs, population):
+    best_p = []
+    for (p1, p2) in parentPairs:
+        if population.individuals[p1].fitness > population.individuals[p2].fitness:
+            best_p.append(p1)
+        else: best_p.append(p2)
+        
+    return(best_p)
+    
+          
 # Experiment
 def run_experiment(dbengine: Engine, optim_type: str) -> None:
     """
