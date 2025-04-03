@@ -166,18 +166,18 @@ class BrainOptimizerDE(Learner):
         self
         
     def learn(
-            self, population: Population, **kwargs: Any
+            self, children: Population, **kwargs: Any
             ) -> Population:
         """
         Generate individual robots from the population and optimize their weights
         
-        :param population: Population of robots
+        :param population: Population of children
         """
         # TODO: Find a way to extract/enter CPG weights
         logging.debug("\n\n### Starting learning loop ###\n\n")
         
         # Extract population and their fitnesses
-        pop = population.individuals
+        pop = children.individuals
         fit_old = [indiv.fitness for indiv in pop] # TODO: implement pop.individuals instead of using intermediate variable
         fit_new = []
         
@@ -255,8 +255,98 @@ class BrainOptimizerDE(Learner):
             ]
         )
         
-        return population   
+        return population  
+    
+    def setupLearner(
+            self, children: Population
+            ) -> tuple():
+        """
+        Generate lists containing the bodies and brains of the population.
+        
+        :param children: Population of children.
+        """
+        
+        bodies = [body for body in children.individuals]
+        brains = []
+        
+        for body in bodies:
+            active_hinges = body.find_modules_of_type(ActiveHinge)
+            brain = (
+                cpg_network_structure,
+                output_mapping,
+            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
+            brains.append(brain)
+            
+        return (bodies, brains)
+    
+    def DE(
+            self, vectors: list[float]) -> np.array(), np.array():
+        """
+        Performs DE (Differential Evolution) on an input vector of weights.
+        
+        :param vectors: Cadidate solution(s) to go through DE
+        
+        T ->    Target vectors:
+                Add perturbation vectors P to copies of the input vector.
+                T = T + P w/ P ~ N(o, sd)
+        M ->    Mutation vectors:
+                m_i = t_a + F(t_b - t_c) w/ a, b, and c some random indices.
+        C ->    Crossover vectors:
+                Every m_i gets a binary crossover mask with prob_cr to mix between m_i and t_i.
+        C is outputted to be compared to T. The winning genes get passed on.
+        """
+        
+        # Target vectors
+        # Check if input is the initialized weights vector or a target matrix
+        if vectors.ndim == 1:
+            T = np.reshape(np.repeat(
+                vectors, config.NUM_POPULATION_BRAIN_DE),
+                (len(vectors), config.NUM_POPULATION_BRAIN_DE)
+                ).T
+        else: T = vectors
 
+        # Perturb the target vectors with perturbation vectors P
+        P = np.random.normal(0, np.std(T) / config.PERTURB_SD_MOD, size = T.shape)
+        T += P
+        
+        # Mutation
+        M_1 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
+        M_2 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
+        M_3 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
+        M = M_1 + config.F * (M_2 - M_3)
+           
+        # Crossover (use binary mask to decide if T or C is used)
+        cr_mask = np.random.choice(
+            [0,1], size = T.shape, p = [1 - config.P_CR, config.P_CR]
+            )
+        C = np.where(cr_mask == 1, M, T)
+        
+        return T, C
+    
+def DE_optimize(
+        self, T: np.array(), C: np.array, eval_class: Evaluator
+        ) -> np.array(), float:
+    """
+    Selection mechanism for the next generation's target genes.
+
+    :param T: Target vectors
+    :param C: Candidate solutions
+    """
+    
+    logging.debug("DE: Comparing targets with candidates")
+    # Evaluate targets
+    fit_t = eval_class.evaluate(T)
+    fit_c = eval_class.evaluate(C)
+    max_fitness = round(max(max(fit_t), max(fit_c)), 5)
+    logging.debug(f"Best fitness: {max_fitness}")
+    
+    # Return the best performing weights
+    targets = T[np.where(fit_t >= fit_c)[0]]
+    targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
+    assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
+    
+    return targets, max_fitness
+        
 def DE(vectors):
     """
     Performs DE (Differential Evolution) on an input vector of weights.
@@ -323,7 +413,7 @@ def DE_optimize(T, C, eval_class):
     return targets, max_fitness
 
 # Morphology optimization
-class ParentSelector(Selector):
+class ParentSelector(Selector): # Correct version
     """Selector class for parent selection."""
 
     rng: np.random.Generator
@@ -433,7 +523,7 @@ class SurvivorSelector(Selector):
             {},
         )
 
-class CrossoverReproducer(Reproducer):
+class CrossoverReproducer(Reproducer): # Updated version
     """A simple crossover reproducer using multineat."""
 
     rng: np.random.Generator
@@ -466,6 +556,7 @@ class CrossoverReproducer(Reproducer):
         :param population: The parent pairs.
         :param kwargs: Additional keyword arguments.
         :return: The genotypes of the children.
+        # TODO: Turn genotype into population -> Allows for storage
         :raises ValueError: If the parent population is not passed as a kwarg `parent_population`.
         """
         parent_population: Population | None = kwargs.get("parent_population")
@@ -480,7 +571,70 @@ class CrossoverReproducer(Reproducer):
             ).mutate(self.innov_db_body, self.innov_db_brain, self.rng)
             for parent1_i, parent2_i in population
         ]
-        return offspring_genotypes
+    
+        # Output population of children (no fitnesses/solutions yet)
+        children = Population(
+            individuals = [
+                Individual(genotype = g_child,
+                           fitness = None,
+                           solution = None)
+                for g_child in offspring_genotypes
+                ]
+            )
+        
+        children = self.reformat(population, children,
+                                 kwargs.get("parent_population"))
+        
+        return children
+    
+    def insertSolution(
+            self, children: Population, population: Population,
+            parentPairs: list[list[int]]) -> Population:
+        """
+        Fill in the best performing parent's solution
+        
+        :param population: Population of all individuals minus the children.
+        :param children: Population of children.
+        """
+        
+        solutions = self.findParentSolutions(parentPairs, population)
+        
+        for idx, sol in enumerate(solutions):
+            children.individuals[idx].solution = sol
+        
+        return children
+        
+    def findParentSolutions(
+            self, parentPairs: list[list[int]], population: Population) -> list[list[float]]:
+        """
+        Finds the best parent solution for a child given its parent pair.
+
+        :param parentPairs: List of parent index pairs.
+        :param population: Population of parents.
+        """
+        best_solutions = []
+        for (p1, p2) in parentPairs:
+            if population.individuals[p1].fitness > population.individuals[p2].fitness:
+                idx = p1
+            else: idx = p2
+            
+            best_solutions.append(population.individuals[idx].solution)
+            
+        return(best_solutions)
+    
+    def reformat(
+            self, parentPairs: list[list[int]], children: Population,
+            population: Population) -> Population:
+        """
+        Performs all steps to reformat child population with parent's solutions.
+        
+        :param parentPairs: List of parent index pairs.
+        :param children: Population of children.
+        :param population: Population of parents.
+        """
+        
+        children = self.insertSolution(children, population, parentPairs)
+        return(children)
 
 def findBestParents(parentPairs, population):
     best_p = []
@@ -559,19 +713,22 @@ def run_experiment(dbengine: Engine, optim_type: str) -> None:
         for _ in range(config.POPULATION_SIZE_BODY)
     ]
 
-    # Evaluate the initial population.
+    # Evaluate the initial population using BODY evaluator
     logging.debug("Evaluating initial population.")
     initial_fitnesses = evaluator_body.evaluate(initial_genotypes)
 
     # Create a population of individuals, combining genotype with fitness.
+    # TODO: Update to brain evaluator ->  functionize?
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness=fitness)
+            Individual(genotype=genotype, fitness=fitness, solution=None)
             for genotype, fitness in zip(
                 initial_genotypes, initial_fitnesses, strict=True
             )
         ]
     )
+    
+    
 
     # Finish the zeroth generation and save it to the database.
     generation = Generation(
