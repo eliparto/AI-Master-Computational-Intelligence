@@ -1,5 +1,4 @@
 """ Parent/reproducer experimentation """
-
 import logging
 import os
 import sys
@@ -101,18 +100,20 @@ class SurvivorSelector(Selector):
         self.rng = rng
 
     def select(
-        self, population: Population, **kwargs: Any
+        self, population: Population, children: Population, **kwargs: Any
     ) -> tuple[Population, dict[str, Any]]:
         """
         Select survivors using a tournament.
 
         :param population: The population the parents come from.
+        :param children: Population of children.
         :param kwargs: The offspring, with key 'offspring_population'.
         :returns: A newly created population.
         :raises ValueError: If the population is empty.
         """
-        offspring = kwargs.get("children")
-        offspring_fitness = kwargs.get("child_task_performance")
+        
+        offspring, offspring_fitness = self.setupChildren()
+
         if offspring is None or offspring_fitness is None:
             raise ValueError(
                 "No offspring was passed with positional argument 'children' and / or 'child_task_performance'."
@@ -152,6 +153,23 @@ class SurvivorSelector(Selector):
             ),
             {},
         )
+    
+    def setupChildren(
+            self, children: Population):
+        """
+        Extract the genotypes and fitnesses for correct formatting.
+        
+        :param children: Population of children.
+        """
+        
+        genotypes = []
+        fitnesses = []
+        
+        for child in children.individuals:
+            genotypes.append(child.genotype)
+            fitnesses.append(child.fitness)
+            
+        return genotypes, fitnesses
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -186,7 +204,6 @@ class CrossoverReproducer(Reproducer):
         :param population: The parent pairs.
         :param kwargs: Additional keyword arguments.
         :return: The genotypes of the children.
-        # TODO: Turn genotype into population -> Allows for storage
         :raises ValueError: If the parent population is not passed as a kwarg `parent_population`.
         """
         parent_population: Population | None = kwargs.get("parent_population")
@@ -212,8 +229,7 @@ class CrossoverReproducer(Reproducer):
                 ]
             )
         
-        children = self.reformat(population, children,
-                                 kwargs.get("parent_population"))
+        children = self.insertSolution(children, population, parentPairs)
         
         return children
     
@@ -252,16 +268,6 @@ class CrossoverReproducer(Reproducer):
             
         return(best_solutions)
     
-    def reformat(
-            self, parentPairs: list[list[int]], children: Population,
-            population: Population) -> Population:
-        """
-        Performs all steps to reformat child population with parent's solutions.
-        
-        :param parentPairs: List of parent index pairs.
-        :param children: Population of children.
-        :param population: Population of parents.
-        """
         
         children = self.insertSolution(children, population, parentPairs)
         return(children)
@@ -288,7 +294,6 @@ class BrainOptimizerDE(Learner):
         fit_old = [indiv.fitness for indiv in pop] # TODO: implement pop.individuals instead of using intermediate variable
         fit_new = []
         
-        print("Controller learning:")
         for index in tqdm(range(len(pop)), leave = False):
             # Generate robot (body and brain)
             indiv = pop[index]
@@ -365,59 +370,57 @@ class BrainOptimizerDE(Learner):
         return population  
     
     def learn(
-            self, children: Population, **kwargs: Any) -> Population:
+            self, population: Population, **kwargs: Any) -> Population:
         """
         Generate individual robots from the population and optimize their weights
         
-        :param population: Population of children
+        :param population: Population to go through DE.
         """
         
         # Generate children bodies and brains
-        bodies, brains = self.setupLearner(children)
+        bodies, brains, solution_sizes = self.setupLearner(population)
         
-        for idx, body in enumerate(bodies):
+        # Reformat solution vectors to the correct sizes
+        population = self.setSolutionSizes(population, solution_sizes)
+        
+        print("Optimizing brains")
+        for idx, body in enumerate(tqdm(bodies, leave = False)):
             # Setup optimizer
             cpg_network_structure, output_mapping = brains[idx]
-            num_joints = cpg_network_structure.num_connections
             
-            evaluator = Evaluator_brain(
-            headless=True,
-            num_simulators=config.NUM_SIMULATORS_BRAIN,
-            cpg_network_structure=cpg_network_structure,
-            body=body,
-            output_mapping=output_mapping,
-            )
-            
-            
-    
-    def setupLearner(
-            self, children: Population
-            ):
-        """
-        Generate lists containing the bodies and brains of the population.
-        
-        :param children: Population of children.
-        """
-        
-        bodies = [body.genotype.develop().body for body in children.individuals]
-        brains = []
-        
-        for body in bodies:
-            active_hinges = body.find_modules_of_type(ActiveHinge)
-            brain = (
-                cpg_network_structure,
-                output_mapping,
-            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
-            brains.append(brain)
-            
-        return bodies, brains
+            # Only optimize robots with at least 2 joints
+            if cpg_network_structure.num_connections > 1:
+                evaluator = Evaluator_brain(
+                headless=True,
+                num_simulators=config.NUM_SIMULATORS_BRAIN,
+                cpg_network_structure=cpg_network_structure,
+                body=body,
+                output_mapping=output_mapping,
+                )
+                
+                # Sample target and candidate solutions from stored parent solution
+                sol_t, sol_c = self.DE(population.individuals[idx].solution)
+
+                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN_DE - 1), leave = False):
+                    targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
+                    sol_t, sol_c = self.DE(targets)
+                    
+                # Update fitness and solution
+                targets, max_fit = self.DE_optimize(sol_t, sol_c, evaluator)
+                population.individuals[idx].solution = targets[0].tolist()
+                population.individuals[idx].fitness = max_fit
+                
+            else:
+                population.individuals[idx].fitness = 0.0
+                
+        return population
     
     def DE(
-            self, vectors: list[float]):
+            self, vectors):
         """
-        Performs DE (Differential Evolution) on an input vector of weights.
+        Generates target and candidate vectors for Differential Evolution).
         
-        :param vectors: Cadidate solution(s) to go through DE
+        :param vectors: Cadidate solution(s) to go through DE. Can be 1D list or 2D array.
         
         T ->    Target vectors:
                 Add perturbation vectors P to copies of the input vector.
@@ -430,7 +433,7 @@ class BrainOptimizerDE(Learner):
         """
         
         # Target vectors
-        # Check if input is the initialized weights vector or a target matrix
+        vectors = np.array(vectors) # Reformat
         if vectors.ndim == 1:
             T = np.reshape(np.repeat(
                 vectors, config.NUM_POPULATION_BRAIN_DE),
@@ -443,10 +446,8 @@ class BrainOptimizerDE(Learner):
         T += P
         
         # Mutation
-        M_1 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M_2 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M_3 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M = M_1 + config.F * (M_2 - M_3)
+        m_1, m_2, m_3 = self.mutationIndices(len(T))
+        M = T[m_1] + config.F * (T[m_2] - T[m_3])
            
         # Crossover (use binary mask to decide if T or C is used)
         cr_mask = np.random.choice(
@@ -457,10 +458,10 @@ class BrainOptimizerDE(Learner):
         return T, C
     
     def DE_optimize(
-            self, T: npt.NDArray[np.int_], C: npt.NDArray[np.int_],
-            eval_class: Evaluator_brain):
+            self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],
+            eval_class):
         """
-        Selection mechanism for the next generation's target genes.
+        Compare target vectors with candidate vectors for the next generation.
     
         :param T: Target vectors
         :param C: Candidate solutions
@@ -468,27 +469,105 @@ class BrainOptimizerDE(Learner):
         
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
-        fit_t = eval_class.evaluate(T)
-        fit_c = eval_class.evaluate(C)
-        max_fitness = round(max(max(fit_t), max(fit_c)), 5)
-        logging.debug(f"Best fitness: {max_fitness}")
+        solutions = np.vstack((T, C))
+        fitnesses = eval_class.evaluate(solutions)
         
-        # Return the best performing weights
-        targets = T[np.where(fit_t >= fit_c)[0]]
-        targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
-        assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
+        # Sort targets by fitness (high to low)
+        sort_idx = np.flip(np.argsort(fitnesses))
+        solutions = solutions[sort_idx]
         
-        return targets, max_fitness
+        return solutions[:config.NUM_POPULATION_BRAIN_DE], max(fitnesses)
+    
+    def mutationIndices(
+            self, t_pop) -> npt.NDArray[np.int_]:
+        """
+        Generate the indices for the mutation arrays.
 
+        :param t_pop: No. of target vectors to choose from.
+        """
+        assert t_pop > 3, f"Need at least 4 vectors to choose 3 mutation vectors. {t_pop} given." 
+        
+        base = np.arange(0, t_pop, 1)
+        m1 = np.random.permutation(t_pop)
+        while np.any(m1 == base):
+            m1 = np.random.permutation(t_pop)
+            
+        m2 = np.random.permutation(t_pop)
+        while np.any(m2 == m1) or np.any(m2 == base):
+            m2= np.random.permutation(t_pop)
+            
+        m3 = np.random.permutation(t_pop)
+        while np.any(m3 == m1) or np.any(m3 == m2) or np.any(m3 == base):
+            m3 = np.random.permutation(t_pop)
+            
+        return m1, m2, m3
+    
+    def initialSolutions(
+            self, population: Population) -> Population:
+        """
+        Generate random weights for the initial population.
+        """
 
-# Create iniital population
-# Setup
+        _, brains, _ = self.setupLearner(population)
+        
+        for idx, brain in enumerate(brains):
+            population.individuals[idx].solution = np.random.uniform(
+                low=-1.0, high=1.0, size=brain[0].num_connections).tolist()
+            
+        return population
+    
+    def setupLearner(
+            self, children: Population):
+        """
+        Generate lists containing the bodies and brains of the population.
+        
+        :param children: Population of children.
+        """
+        
+        bodies = [body.genotype.develop().body for body in children.individuals]
+        brains = []
+        sol_sizes = []
+        
+        for body in bodies:
+            active_hinges = body.find_modules_of_type(ActiveHinge)
+            brain = (
+                cpg_network_structure,
+                output_mapping,
+            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
+            brains.append(brain)
+            sol_sizes.append(cpg_network_structure.num_connections)
+            
+        return bodies, brains, sol_sizes
+    
+    def setSolutionSizes(
+            self, children: Population, sol_sizes = list[int]) -> Population:
+        """
+        Reformat solution vectors to the right sizes.
+
+        :param children: Population of children.
+        :param sol_sizes: Correct sizes of the solution vectors.
+        """
+        
+        for idx, sol_size in enumerate(sol_sizes):
+            solution = children.individuals[idx].solution
+            if len(solution) >= sol_size:
+                solution = solution[:sol_size]
+            else:
+                sample = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solutions))
+                solution = np.concatenate((solution, sample)).tolist()
+                
+            children.individuals[idx].solution = solution
+        
+        return children
+            
+    
+# Create initial population
 rng_seed = seed_from_time()
 rng = make_rng(rng_seed)
 experiment = Experiment(rng_seed=rng_seed)
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
-evaluator_body = Evaluator_body(headless=True, num_simulators=config.NUM_SIMULATORS_BODY)
 
 rng_seed = seed_from_time()
 rng = make_rng(rng_seed)
@@ -510,19 +589,24 @@ initial_genotypes = [
     for _ in range(config.POPULATION_SIZE_BODY)
 ]
 
-initial_fitnesses = evaluator_body.evaluate(initial_genotypes)
+#initial_fitnesses = evaluator_body.evaluate(initial_genotypes)
+initial_fitnesses = config.POPULATION_SIZE_BODY * [0.0]
 
 # Create a population of individuals, combining genotype with fitness.
 #p_sol = np.random.normal(size = 4).tolist()
+print("Initializing population...\n")
 population = Population(
-    individuals=[ #TODO: p_sol added
-        Individual(genotype=genotype, fitness=fitness,
+    individuals=[
+        Individual(genotype=genotype, fitness=0.0,
                    solution = None)
         for genotype, fitness in zip(
             initial_genotypes, initial_fitnesses, strict=True
         )
     ]
 )
+
+# Train the initial population
+optimizer = BrainOptimizerDE()
 
 # Finish the zeroth generation and save it to the database.
 generation = Generation(

@@ -11,6 +11,7 @@ TO-DOs:
     - Remove fitness calculation at initialization (we only evaluate the brain)
     - Update evaluator in evoution.step -> change from body to brain evaluator
         |-> Functionize evaluation process
+    - Remove CMA-ES optimizer
 """
 
 import logging
@@ -160,7 +161,7 @@ class BrainOptimizerCMA_ES(Learner):
         return population
  
 class BrainOptimizerDE(Learner):
-    """Optimizer class (CMA-ES)"""
+    """Optimizer class (DE)"""
     
     def __init__(self) -> None:
         self
@@ -173,7 +174,6 @@ class BrainOptimizerDE(Learner):
         
         :param population: Population of children
         """
-        # TODO: Find a way to extract/enter CPG weights
         logging.debug("\n\n### Starting learning loop ###\n\n")
         
         # Extract population and their fitnesses
@@ -277,7 +277,7 @@ class BrainOptimizerDE(Learner):
             ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
             brains.append(brain)
             
-        return (bodies, brains)
+        return bodies, brains
     
     def DE(
             self, vectors: list[float]) -> np.array(), np.array():
@@ -323,29 +323,29 @@ class BrainOptimizerDE(Learner):
         
         return T, C
     
-def DE_optimize(
-        self, T: np.array(), C: np.array, eval_class: Evaluator
-        ) -> np.array(), float:
-    """
-    Selection mechanism for the next generation's target genes.
-
-    :param T: Target vectors
-    :param C: Candidate solutions
-    """
+    def DE_optimize(
+            self, T: np.array(), C: np.array, eval_class: Evaluator
+            ) -> np.array(), float:
+        """
+        Selection mechanism for the next generation's target genes.
     
-    logging.debug("DE: Comparing targets with candidates")
-    # Evaluate targets
-    fit_t = eval_class.evaluate(T)
-    fit_c = eval_class.evaluate(C)
-    max_fitness = round(max(max(fit_t), max(fit_c)), 5)
-    logging.debug(f"Best fitness: {max_fitness}")
-    
-    # Return the best performing weights
-    targets = T[np.where(fit_t >= fit_c)[0]]
-    targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
-    assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
-    
-    return targets, max_fitness
+        :param T: Target vectors
+        :param C: Candidate solutions
+        """
+        
+        logging.debug("DE: Comparing targets with candidates")
+        # Evaluate targets
+        fit_t = eval_class.evaluate(T)
+        fit_c = eval_class.evaluate(C)
+        max_fitness = round(max(max(fit_t), max(fit_c)), 5)
+        logging.debug(f"Best fitness: {max_fitness}")
+        
+        # Return the best performing weights
+        targets = T[np.where(fit_t >= fit_c)[0]]
+        targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
+        assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
+        
+        return targets, max_fitness
         
 def DE(vectors):
     """
