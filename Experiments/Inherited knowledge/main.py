@@ -1,29 +1,14 @@
-"""Main script for the FULL EXPERIMENTAL IMPLEMENTATION"""
-"""
-TO-DOs:
-    - Change order of evolutionary steps (.step() func)
-    - DE -> Combine T and C into one simulation
-    - DE -> Place functions in DE class
-    - Simulation starting seems to take up a lot of time
-    - Only log necessary information
-    - Parametrize/Functionize learning optimizers
-    - Put DE functions in class
-    - Remove fitness calculation at initialization (we only evaluate the brain)
-    - Update evaluator in evoution.step -> change from body to brain evaluator
-        |-> Functionize evaluation process
-    - Remove CMA-ES optimizer
-"""
+""" Main script for the FULL EXPERIMENTAL IMPLEMENTATION """
 
 import logging
 import os
-import sys
-from time import localtime, perf_counter
+import json
 from typing import Any
 from tqdm import tqdm
 import argparse
-import plotille
+from logConfig import logConfig
+from consolePlot import consolePlot
 
-import cma
 import config
 import multineat
 import numpy as np
@@ -37,7 +22,6 @@ from database_components import (
     Individual,
     Population,
 )
-from evaluator_body_script import Evaluator as Evaluator_body
 from evaluator_brain_script import Evaluator as Evaluator_brain
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -56,110 +40,7 @@ from revolve2.experimentation.optimization.ea import population_management, sele
 from revolve2.experimentation.rng import make_rng, seed_from_time
 
 
-# Brain optimization variants
-class BrainOptimizerCMA_ES(Learner):
-    """Optimizer class (CMA-ES)"""
-    
-    def __init__(self) -> None:
-        self
-        
-    def learn(
-            self, population: Population, **kwargs: Any
-            ) -> Population:
-        """
-        Generate individual robots from the population and optimize their weights
-        
-        :param population: Population of robots
-        """
-        # TODO: Find a way to extract/enter CPG weights
-        logging.debug("\n\n### Starting learning loop ###\n\n")
-        
-        # Extract population and their fitnesses
-        pop = population.individuals
-        fit_old = [indiv.fitness for indiv in pop] # TODO: implement pop.individuals instead of using intermediate variable
-        fit_new = []
-        
-        rng_seed = seed_from_time() % 2**32  # Cma seed must be smaller than 2**32.
-        
-        print("Controller learning:")
-        for index in tqdm(range(len(pop)), leave = False):
-            # Generate robot (body and brain)
-            indiv = pop[index]
-            body = indiv.genotype.develop().body
-            active_hinges = body.find_modules_of_type(ActiveHinge)
-    
-            (
-                cpg_network_structure,
-                output_mapping,
-            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
-            
-            # Setup optimizer
-            evaluator = Evaluator_brain(
-            headless=True,
-            num_simulators=config.NUM_SIMULATORS_BRAIN,
-            cpg_network_structure=cpg_network_structure,
-            body=body,
-            output_mapping=output_mapping,
-            )
-            
-            # Initial parameter values for the brain.
-            num_joints = cpg_network_structure.num_connections
-            if(num_joints > 1): # Robots with 0 or 1 joints cannot be optimized
-                # TODO: Research different initialization values (He, Xavier etc.)
-                initial_mean = num_joints * [0.5]
-                logging.debug(f"Starting brain optimization on robot {index}")
-                logging.debug(f"No. of joints: {num_joints}")
-            
-                # Initialize the cma optimizer.
-                options = cma.CMAOptions()
-                options.set("bounds", [-1.0, 1.0])
-                options.set("seed", rng_seed)
-                options.set("verb_disp", 0)
-                # popsize calculation: 3*ln(4N) (N = no. of parameters/weights)
-                #options.set("popsize", config.NUM_POPULATION_BRAIN_CMA) # TODO: ONLY FOR TESTING -> remove later!
-                opt = cma.CMAEvolutionStrategy(initial_mean, config.INITIAL_STD, options)
-                
-                # Optimize brain -> export best weights and fitness
-                for generation_index in tqdm(range(config.NUM_GENERATIONS_BRAIN_CMA), leave = False):
-                    logging.debug(f"** Brain generation {generation_index + 1} / {config.NUM_GENERATIONS_BRAIN_CMA} **")
-            
-                    # Get the sampled solutions(parameters) from cma.
-                    solutions = opt.ask()
-                    # Evaluate them. Invert because fitness maximizes, but cma minimizes.
-                    fitnesses = -evaluator.evaluate(solutions)
-                    # Tell cma the fitnesses.
-                    opt.tell(solutions, fitnesses)
-                    logging.debug(f"{opt.result.xbest=} {opt.result.fbest=}")
-            
-                    # Increase the generation index counter.
-                    generation_index += 1
-                    
-                logging.debug(f"\nFinished brain optimization on robot {index}\n")
-                fit_new.append(-opt.result.fbest)
-            
-            else:
-                logging.debug(f"Could not optimize robot {index}\n")
-                fit_new.append(0.0) # Unoptimizable robot -> set fitness to zero
-
-        logging.debug("\n\n### Learning done ###\n\n")
-        
-        # Output new population using Population() and Genotype()
-        # TODO: DON'T update fitness to CMA solution if solution performs worse
-        genotypes = [indiv.genotype for indiv in pop]
-        fit = np.maximum(np.array(fit_old), np.array(fit_new)).tolist()
-        consolePlot(fit_old, fit)
-        
-        population = Population(
-        individuals=[
-            Individual(genotype=genotype, fitness=fitness)
-            for genotype, fitness in zip(
-                genotypes, fit, strict=True
-                )
-            ]
-        )
-        
-        return population
- 
+# Brain optimizer
 class BrainOptimizerDE(Learner):
     """Optimizer class (DE)"""
     
@@ -167,124 +48,58 @@ class BrainOptimizerDE(Learner):
         self
         
     def learn(
-            self, children: Population, **kwargs: Any
-            ) -> Population:
+            self, population: Population, **kwargs: Any) -> Population:
         """
         Generate individual robots from the population and optimize their weights
         
-        :param population: Population of children
+        :param population: Population to go through DE.
         """
-        logging.debug("\n\n### Starting learning loop ###\n\n")
         
-        # Extract population and their fitnesses
-        pop = children.individuals
-        fit_old = [indiv.fitness for indiv in pop] # TODO: implement pop.individuals instead of using intermediate variable
-        fit_new = []
+        # Generate children bodies and brains
+        bodies, brains, solution_sizes = self.setupLearner(population)
         
-        print("Controller learning:")
-        for index in tqdm(range(len(pop)), leave = False):
-            # Generate robot (body and brain)
-            indiv = pop[index]
-            body = indiv.genotype.develop().body
-            active_hinges = body.find_modules_of_type(ActiveHinge)
-    
-            (
-                cpg_network_structure,
-                output_mapping,
-            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
-            
+        # Reformat solution vectors to the correct sizes
+        population = self.setSolutionSizes(population, solution_sizes)
+        
+        print("Optimizing...")
+        for idx, body in enumerate(tqdm(bodies, leave = False)):
             # Setup optimizer
-            evaluator = Evaluator_brain(
-            headless=True,
-            num_simulators=config.NUM_SIMULATORS_BRAIN,
-            cpg_network_structure=cpg_network_structure,
-            body=body,
-            output_mapping=output_mapping,
-            )
+            cpg_network_structure, output_mapping = brains[idx]
             
-            # Initial parameter values for the brain.
-            num_joints = cpg_network_structure.num_connections
-            if(num_joints > 1): # Robots with 0 or 1 joints cannot be optimized
-                # TODO: Research different initialization values (He, Xavier etc.)
-                initial_mean = np.random.uniform(-1, 1, num_joints)
-                logging.debug(f"Starting brain optimization on robot {index}")
-                logging.debug(f"No. of joints: {num_joints}")
-            
-                # Sample target and candidate solutions
-                sol_t, sol_c = DE(initial_mean)
-                
-                # Find best performers (next generation's targets)
-                generation_index = 0
-                for generation_index in tqdm(range(config.NUM_GENERATIONS_BRAIN_DE), leave = False):
-                    logging.debug(f"** Brain generation {generation_index + 1} / {config.NUM_GENERATIONS_BRAIN_DE} **")
-            
-                    targets, max_fit = DE_optimize(sol_t, sol_c, evaluator)
-                    
-                    if(generation_index == config.NUM_POPULATION_BRAIN_DE - 1): break
-                    sol_t, sol_c = DE(targets)
-            
-                    # Increase the generation index counter.
-                    generation_index += 1
-                    
-                # Find the best candidate after learning
-                _, max_fit = DE_optimize(sol_t, sol_c, evaluator)
-                
-                # max_fit_weights = targets[max_fit_index]
-                fit_new.append(max_fit)
-                logging.debug(f"\nFinished brain optimization on robot {index}\n")
-            
-            else:
-                logging.debug(f"Could not optimize robot {index}\n")
-                fit_new.append(0.0) # Unoptimizable robot -> set fitness to zero
-
-        logging.debug("\n\n### Learning done ###\n\n")
-        
-        # Output new population using Population() and Genotype()
-        # TODO: DON'T update fitness to CMA solution if solution performs worse
-        genotypes = [indiv.genotype for indiv in pop]
-        #fit = np.maximum(fit_old, fit_new).tolist()
-        
-        consolePlot(fit_old, fit_new)
-        
-        population = Population(
-        individuals=[
-            Individual(genotype=genotype, fitness=fitness)
-            for genotype, fitness in zip(
-                genotypes, fit_new, strict=True
+            # Only optimize robots with at least 2 joints
+            if cpg_network_structure.num_connections > 1:
+                evaluator = Evaluator_brain(
+                headless=True,
+                num_simulators=config.NUM_SIMULATORS_BRAIN,
+                cpg_network_structure=cpg_network_structure,
+                body=body,
+                output_mapping=output_mapping,
                 )
-            ]
-        )
-        
-        return population  
-    
-    def setupLearner(
-            self, children: Population
-            ) -> tuple():
-        """
-        Generate lists containing the bodies and brains of the population.
-        
-        :param children: Population of children.
-        """
-        
-        bodies = [body for body in children.individuals]
-        brains = []
-        
-        for body in bodies:
-            active_hinges = body.find_modules_of_type(ActiveHinge)
-            brain = (
-                cpg_network_structure,
-                output_mapping,
-            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
-            brains.append(brain)
-            
-        return bodies, brains
+                
+                # Sample target and candidate solutions from stored parent solution
+                sol_t, sol_c = self.DE(population.individuals[idx].solution)
+                
+                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
+                                leave = False):
+                    targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
+                    sol_t, sol_c = self.DE(targets)
+                    
+                # Update fitness and solution
+                targets, max_fit = self.DE_optimize(sol_t, sol_c, evaluator)
+                population.individuals[idx].solution = targets[0].tolist()
+                population.individuals[idx].fitness = max_fit
+                
+            else:
+                population.individuals[idx].fitness = 0.0
+                
+        return population
     
     def DE(
-            self, vectors: list[float]) -> np.array(), np.array():
+            self, vectors):
         """
-        Performs DE (Differential Evolution) on an input vector of weights.
+        Generates target and candidate vectors for Differential Evolution).
         
-        :param vectors: Cadidate solution(s) to go through DE
+        :param vectors: Cadidate solution(s) to go through DE. Can be 1D list or 2D array.
         
         T ->    Target vectors:
                 Add perturbation vectors P to copies of the input vector.
@@ -297,11 +112,11 @@ class BrainOptimizerDE(Learner):
         """
         
         # Target vectors
-        # Check if input is the initialized weights vector or a target matrix
+        vectors = np.array(vectors) # Reformat
         if vectors.ndim == 1:
             T = np.reshape(np.repeat(
-                vectors, config.NUM_POPULATION_BRAIN_DE),
-                (len(vectors), config.NUM_POPULATION_BRAIN_DE)
+                vectors, config.NUM_POPULATION_BRAIN),
+                (len(vectors), config.NUM_POPULATION_BRAIN)
                 ).T
         else: T = vectors
 
@@ -310,10 +125,8 @@ class BrainOptimizerDE(Learner):
         T += P
         
         # Mutation
-        M_1 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M_2 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M_3 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-        M = M_1 + config.F * (M_2 - M_3)
+        m_1, m_2, m_3 = self.mutationIndices(len(T))
+        M = T[m_1] + config.F * (T[m_2] - T[m_3])
            
         # Crossover (use binary mask to decide if T or C is used)
         cr_mask = np.random.choice(
@@ -324,10 +137,10 @@ class BrainOptimizerDE(Learner):
         return T, C
     
     def DE_optimize(
-            self, T: np.array(), C: np.array, eval_class: Evaluator
-            ) -> np.array(), float:
+            self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],
+            eval_class):
         """
-        Selection mechanism for the next generation's target genes.
+        Compare target vectors with candidate vectors for the next generation.
     
         :param T: Target vectors
         :param C: Candidate solutions
@@ -335,85 +148,102 @@ class BrainOptimizerDE(Learner):
         
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
-        fit_t = eval_class.evaluate(T)
-        fit_c = eval_class.evaluate(C)
-        max_fitness = round(max(max(fit_t), max(fit_c)), 5)
-        logging.debug(f"Best fitness: {max_fitness}")
+        solutions = np.vstack((T, C))
+        fitnesses = eval_class.evaluate(solutions)
         
-        # Return the best performing weights
-        targets = T[np.where(fit_t >= fit_c)[0]]
-        targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
-        assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
+        # Sort targets by fitness (high to low)
+        sort_idx = np.flip(np.argsort(fitnesses))
+        solutions = solutions[sort_idx]
         
-        return targets, max_fitness
-        
-def DE(vectors):
-    """
-    Performs DE (Differential Evolution) on an input vector of weights.
+        return solutions[:config.NUM_POPULATION_BRAIN], max(fitnesses)
     
-    :param vectors: Cadidate solution(s) to go through DE
-    
-    T ->    Target vectors:
-            Add perturbation vectors P to copies of the input vector.
-            T = T + P w/ P ~ N(o, sd)
-    M ->    Mutation vectors:
-            m_i = t_a + F(t_b - t_c) w/ a, b, and c some random indices.
-    C ->    Crossover vectors:
-            Every m_i gets a binary crossover mask with prob_cr to mix between m_i and t_i.
-    C is outputted to be compared to T. The winning genes get passed on.
-    """
+    def mutationIndices(
+            self, t_pop) -> npt.NDArray[np.int_]:
+        """
+        Generate the indices for the mutation arrays.
 
-    # Target vectors
-    # Check if input is the initialized weights vector or a target matrix
-    if vectors.ndim == 1:
-        T = np.reshape(np.repeat(
-            vectors, config.NUM_POPULATION_BRAIN_DE),
-            (len(vectors), config.NUM_POPULATION_BRAIN_DE)
-            ).T
-    else: T = vectors
-
-    # Perturb the target vectors with perturbation vectors P
-    P = np.random.normal(0, np.std(T) / config.PERTURB_SD_MOD, size = T.shape)
-    T += P
-    
-    # Mutation
-    M_1 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-    M_2 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-    M_3 = T[np.random.choice(np.arange(0, len(T), 1), len(T), replace = False)]
-    M = M_1 + config.F * (M_2 - M_3)
-       
-    # Crossover (use binary mask to decide if T or C is used)
-    cr_mask = np.random.choice(
-        [0,1], size = T.shape, p = [1 - config.P_CR, config.P_CR]
-        )
-    C = np.where(cr_mask == 1, M, T)
-    
-    return T, C
+        :param t_pop: No. of target vectors to choose from.
+        """
+        assert t_pop > 3, f"Need at least 4 vectors to choose 3 mutation vectors. {t_pop} given." 
         
-def DE_optimize(T, C, eval_class):
-    """
-    Selection mechanism for the next generation's target genes.
+        base = np.arange(0, t_pop, 1)
+        m1 = np.random.permutation(t_pop)
+        while np.any(m1 == base):
+            m1 = np.random.permutation(t_pop)
+            
+        m2 = np.random.permutation(t_pop)
+        while np.any(m2 == m1) or np.any(m2 == base):
+            m2= np.random.permutation(t_pop)
+            
+        m3 = np.random.permutation(t_pop)
+        while np.any(m3 == m1) or np.any(m3 == m2) or np.any(m3 == base):
+            m3 = np.random.permutation(t_pop)
+            
+        return m1, m2, m3
+    
+    def setupLearner(
+            self, children: Population):
+        """
+        Generate lists containing the bodies and brains of the population.
+        
+        :param children: Population of children.
+        """
+        
+        bodies = [body.genotype.develop().body for body in children.individuals]
+        brains = []
+        sol_sizes = []
+        
+        for body in bodies:
+            active_hinges = body.find_modules_of_type(ActiveHinge)
+            brain = (
+                cpg_network_structure,
+                output_mapping,
+            ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
+            brains.append(brain)
+            sol_sizes.append(cpg_network_structure.num_connections)
+            
+        return bodies, brains, sol_sizes
+    
+    def initialSolutions(
+            self, population: Population) -> Population:
+        """
+        Generate random weights for the initial population.
+        """
 
-    :param T: Target vectors
-    :param C: Candidate solutions
-    """
+        _, _, sol_sizes = self.setupLearner(population)
+        
+        for idx, sol_size in enumerate(sol_sizes):
+            if sol_size == 0: sol_size = 1 # Prevent empty list as output
+            population.individuals[idx].solution = np.random.uniform(
+                low=-1.0, high=1.0, size=sol_size).tolist()
+            
+        return population
     
-    logging.debug("DE: Comparing targets with candidates")
-    # Evaluate targets
-    fit_t = eval_class.evaluate(T)
-    fit_c = eval_class.evaluate(C)
-    max_fitness = round(max(max(fit_t), max(fit_c)), 5)
-    logging.debug(f"Best fitness: {max_fitness}")
-    
-    # Return the best performing weights
-    targets = T[np.where(fit_t >= fit_c)[0]]
-    targets = np.vstack((targets, C[np.where(fit_c > fit_t)[0]]))  
-    assert len(targets) == len(T), f"Length of target vectors is {len(targets)}. Should be {len(T)}"
-    
-    return targets, max_fitness
+    def setSolutionSizes(
+            self, children: Population, sol_sizes = list[int]) -> Population:
+        """
+        Reformat solution vectors to the right sizes.
+
+        :param children: Population of children.
+        :param sol_sizes: Correct sizes of the solution vectors.
+        """
+        
+        for idx, sol_size in enumerate(sol_sizes):
+            if sol_size == 0: sol_size = 1 # Prevent empty list as output
+            solution = children.individuals[idx].solution
+            if len(solution) >= sol_size:
+                solution = solution[:sol_size]
+            else:
+                sample = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution))
+                solution = np.concatenate((solution, sample)).tolist()
+                
+            children.individuals[idx].solution = solution
+        
+        return children
 
 # Morphology optimization
-class ParentSelector(Selector): # Correct version
+class ParentSelector(Selector):
     """Selector class for parent selection."""
 
     rng: np.random.Generator
@@ -471,22 +301,19 @@ class SurvivorSelector(Selector):
         self.rng = rng
 
     def select(
-        self, population: Population, **kwargs: Any
+        self, population: Population, children: Population
     ) -> tuple[Population, dict[str, Any]]:
         """
         Select survivors using a tournament.
 
         :param population: The population the parents come from.
+        :param children: Population of children.
         :param kwargs: The offspring, with key 'offspring_population'.
         :returns: A newly created population.
         :raises ValueError: If the population is empty.
         """
-        offspring = kwargs.get("children")
-        offspring_fitness = kwargs.get("child_task_performance")
-        if offspring is None or offspring_fitness is None:
-            raise ValueError(
-                "No offspring was passed with positional argument 'children' and / or 'child_task_performance'."
-            )
+        
+        offspring, offspring_fitness, offspring_solution = self.setupChildren(children)
 
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
@@ -509,6 +336,7 @@ class SurvivorSelector(Selector):
                     Individual(
                         genotype=population.individuals[i].genotype,
                         fitness=population.individuals[i].fitness,
+                        solution=population.individuals[i].solution,
                     )
                     for i in original_survivors
                 ]
@@ -516,14 +344,34 @@ class SurvivorSelector(Selector):
                     Individual(
                         genotype=offspring[i],
                         fitness=offspring_fitness[i],
+                        solution=offspring_solution[i],
                     )
                     for i in offspring_survivors
                 ]
             ),
             {},
         )
+    
+    def setupChildren(
+            self, children: Population):
+        """
+        Extract the genotypes and fitnesses for correct formatting.
+        
+        :param children: Population of children.
+        """
+        
+        genotypes = []
+        fitnesses = []
+        solutions = []
+        
+        for child in children.individuals:
+            genotypes.append(child.genotype)
+            fitnesses.append(child.fitness)
+            solutions.append(child.solution)
+            
+        return genotypes, fitnesses, solutions
 
-class CrossoverReproducer(Reproducer): # Updated version
+class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
 
     rng: np.random.Generator
@@ -548,28 +396,25 @@ class CrossoverReproducer(Reproducer): # Updated version
         self.innov_db_brain = innov_db_brain
 
     def reproduce(
-        self, population: npt.NDArray[np.int_], **kwargs: Any
-    ) -> list[Genotype]:
+        self, parentPairs: list[list[int]], 
+        parent_population: dict()) -> list[Genotype]:
         """
         Reproduce the population by crossover.
 
-        :param population: The parent pairs.
-        :param kwargs: Additional keyword arguments.
+        :param parentPairs: Pairs of parents for the children.
+        :param population: Population of parents.
         :return: The genotypes of the children.
-        # TODO: Turn genotype into population -> Allows for storage
-        :raises ValueError: If the parent population is not passed as a kwarg `parent_population`.
         """
-        parent_population: Population | None = kwargs.get("parent_population")
-        if parent_population is None:
-            raise ValueError("No parent population given.")
 
+        # Extract population and perform crossover/mutation
+        parent_population = parent_population.get("parent_population")
         offspring_genotypes = [
             Genotype.crossover(
                 parent_population.individuals[parent1_i].genotype,
                 parent_population.individuals[parent2_i].genotype,
                 self.rng,
             ).mutate(self.innov_db_body, self.innov_db_brain, self.rng)
-            for parent1_i, parent2_i in population
+            for parent1_i, parent2_i in parentPairs
         ]
     
         # Output population of children (no fitnesses/solutions yet)
@@ -582,8 +427,7 @@ class CrossoverReproducer(Reproducer): # Updated version
                 ]
             )
         
-        children = self.reformat(population, children,
-                                 kwargs.get("parent_population"))
+        children = self.insertSolution(children, parent_population, parentPairs)
         
         return children
     
@@ -622,32 +466,12 @@ class CrossoverReproducer(Reproducer): # Updated version
             
         return(best_solutions)
     
-    def reformat(
-            self, parentPairs: list[list[int]], children: Population,
-            population: Population) -> Population:
-        """
-        Performs all steps to reformat child population with parent's solutions.
-        
-        :param parentPairs: List of parent index pairs.
-        :param children: Population of children.
-        :param population: Population of parents.
-        """
         
         children = self.insertSolution(children, population, parentPairs)
         return(children)
-
-def findBestParents(parentPairs, population):
-    best_p = []
-    for (p1, p2) in parentPairs:
-        if population.individuals[p1].fitness > population.individuals[p2].fitness:
-            best_p.append(p1)
-        else: best_p.append(p2)
-        
-    return(best_p)
-    
-          
+       
 # Experiment
-def run_experiment(dbengine: Engine, optim_type: str) -> None:
+def run_experiment(dbengine: Engine) -> None:
     """
     Run an experiment.
 
@@ -674,36 +498,29 @@ def run_experiment(dbengine: Engine, optim_type: str) -> None:
 
     """
     Here we initialize the components used for the evolutionary process:
-    - evaluator_body: Allows us to evaluate a population of modular robots.
+    - learner: Allows for the individual robots in the population to learn.
     - parent_selector: Allows us to select parents from a population of modular robots.
     - survivor_selector: Allows us to select survivors from a population.
     - crossover_reproducer: Allows us to generate offspring from parents.
     - modular_robot_evolution: The evolutionary process as a object that can be iterated.
-    - learner: Allows for the individual robots in the population to learn.
     """
-    
-    evaluator_body = Evaluator_body(headless=True, num_simulators=config.NUM_SIMULATORS_BODY)
+
+    learner = BrainOptimizerDE()    
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
     crossover_reproducer = CrossoverReproducer(
         rng=rng, innov_db_body=innov_db_body, innov_db_brain=innov_db_brain
     )
-    if optim_type == "DE": learner = BrainOptimizerDE()
-    else: learner = BrainOptimizerCMA_ES()
-
+    
     modular_robot_evolution = ModularRobotEvolution(
         parent_selection=parent_selector,
         survivor_selection=survivor_selector,
-        evaluator=evaluator_body,
         reproducer=crossover_reproducer,
         learner=learner
     )
-    
-    # TODO: Brain optimizer has to be started in a loop for every robot
-    # TODO: See if brain optimizer can be implemented into the modular_robot class
 
-    # Create an initial population, as we cant start from nothing.
-    logging.debug("Generating initial population.")
+    # Generate the initial population's genotypes
+    logging.debug("Generating and training initial population.")
     initial_genotypes = [
         Genotype.random(
             innov_db_body=innov_db_body,
@@ -712,34 +529,33 @@ def run_experiment(dbengine: Engine, optim_type: str) -> None:
         )
         for _ in range(config.POPULATION_SIZE_BODY)
     ]
-
-    # Evaluate the initial population using BODY evaluator
-    logging.debug("Evaluating initial population.")
-    initial_fitnesses = evaluator_body.evaluate(initial_genotypes)
-
-    # Create a population of individuals, combining genotype with fitness.
-    # TODO: Update to brain evaluator ->  functionize?
+    
+    # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness=fitness, solution=None)
-            for genotype, fitness in zip(
-                initial_genotypes, initial_fitnesses, strict=True
-            )
-        ]
-    )
+            Individual(genotype=genotype, fitness=0.0,
+                       solution = None)
+            for genotype in initial_genotypes
+            ]
+        )
     
-    
+    # Train the initial population -> Start by generating solutions (weights)
+    print("Population initialized. Training...")
+    population = learner.initialSolutions(population)
+    population = learner.learn(population)
 
     # Finish the zeroth generation and save it to the database.
     generation = Generation(
-        experiment=experiment, generation_index=0, population=population
+        experiment=experiment, generation_index=0, population=population,
     )
     save_to_db(dbengine, generation)
 
     # Start the actual optimization process/evolutionary loop
     # Optimize brain -> Optimize body -> LOOP
-    logging.debug("Start optimization process.")
-    print("Body generations:")
+    logging.debug("Starting evolutionary processes (brain & body).")
+
+    print("Evolutionary process started.")
+    print("Generation:")
     for it in tqdm(range(config.NUM_GENERATIONS_BODY), leave = False):
         generation.generation_index = it
         logging.debug(
@@ -757,12 +573,10 @@ def run_experiment(dbengine: Engine, optim_type: str) -> None:
         )
         save_to_db(dbengine, generation)
 
-
 def main() -> None:
     # Check for passed arguments
     parser = argparse.ArgumentParser(description="Simulate evolution.")
     parser.add_argument("-r", action="store_true", help="add to remove the prior log.")
-    parser.add_argument("-optim", type=str, help="Specify the learning optimizer (DE or CMA).")
     parser.add_argument("-name", type=str, help="Specify the database filename.")
     parser.add_argument("-log", type=int, nargs="?", default=20, help="Logging level -> 10: Debug; 20: INFO; Standard: 20")
     args = parser.parse_args()
@@ -797,10 +611,7 @@ def main() -> None:
 
     # Run the experiment several times.
     for _ in range(config.NUM_REPETITIONS_BODY):
-        timeStart = int(perf_counter())
-        run_experiment(dbengine, args.optim)
-        timeDelta = (int(perf_counter()) - timeStart) // 60
-        logging.info(f"\n*** Run took {timeDelta} minutes ***\n")
+        run_experiment(dbengine)
 
 def save_to_db(dbengine: Engine, generation: Generation) -> None:
     """
@@ -813,47 +624,6 @@ def save_to_db(dbengine: Engine, generation: Generation) -> None:
     with Session(dbengine, expire_on_commit=False) as session:
         session.add(generation)
         session.commit()
-
-def consolePlot(fit_old, fit_new):
-    """
-    Plot all fitnesses after learning
-    """
-    x = np.arange(0, len(fit_old), 1)
-    fig = plotille.Figure()
-    fig.set_x_limits(0, len(fit_old))
-    fig.width = 60
-    fig.height = 30
-    fig.plot(x, sorted(fit_old), interp = "linear", lc = "cyan")
-    fig.plot(x, sorted(fit_new), interp = "linear", lc = "magenta")
-    
-    print(fig.show())
-
-def logConfig():
-    """
-    Print the 'config.py' parameters to the log.
-    """
-    logging.info("## BODY PARAMETERS")
-    logging.info(f"Experiment repetitions:\t\t{config.NUM_REPETITIONS_BODY}")
-    logging.info(f"No. of simulators:\t\t{config.NUM_SIMULATORS_BODY}")
-    logging.info(f"No. of generations:\t\t{config.NUM_GENERATIONS_BODY}")
-    logging.info(f"Population size:\t\t{config.POPULATION_SIZE_BODY}")
-    logging.info(f"Offspring size:\t\t\t{config.OFFSPRING_SIZE}")
-
-    logging.info("\n\n## CMA PARAMETERS")
-    logging.info(f"Experiment repetitions:\t\t{config.NUM_REPETITIONS_BRAIN}")
-    logging.info(f"No. of simulators:\t\t{config.NUM_SIMULATORS_BRAIN}")
-    logging.info(f"No. of generations:\t\t{config.NUM_GENERATIONS_BRAIN_CMA}")
-    logging.info(f"Population size:\t\t{config.NUM_POPULATION_BRAIN_CMA}")
-    logging.info(f"INITIAL SD:\t\t\t{config.INITIAL_STD}")
-    
-    logging.info("\n\n## DE PARAMETERS")
-    logging.info(f"Experiment repetitions:\t\t{config.NUM_REPETITIONS_BRAIN}")
-    logging.info(f"No. of simulators:\t\t{config.NUM_SIMULATORS_BRAIN}")
-    logging.info(f"No. of generations:\t\t{config.NUM_GENERATIONS_BRAIN_DE}")
-    logging.info(f"Population size:\t\t{config.NUM_POPULATION_BRAIN_DE}")
-    logging.info(f"PERTURB SD:\t\t\t{config.PERTURB_SD_MOD}")
-    logging.info(f"F-value:\t\t\t{config.F}")
-    logging.info("\n########################################\n")
 
 if __name__ == "__main__":
     main()

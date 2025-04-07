@@ -2,6 +2,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, ForwardRef, Generic, Type, Type
 
 import sqlalchemy
 import sqlalchemy.orm as orm
+from sqlalchemy import ARRAY, Float
+from sqlalchemy import JSON
 from typing_extensions import Self
 
 from ..._util.init_subclass_get_generic_args import init_subclass_get_generic_args
@@ -40,8 +42,7 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
         genotype_id: orm.Mapped[int] = orm.mapped_column(nullable=False, init=False)
         genotype: orm.Mapped[TGenotype] = orm.relationship()
         fitness: orm.Mapped[float] = orm.mapped_column(nullable=False)
-        
-        p_sol: orm.Mapped[float] = orm.mapped_column(nullable = False)
+        solution: orm.Mapped[list[float]] = orm.mapped_column(JSON, nullable = False)
 
     # ----------------------
     # Implementation details
@@ -67,11 +68,11 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
         @orm.declared_attr
         def fitness(cls) -> orm.Mapped[float]:  # noqa
             return cls.__fitness_impl()
-        
-        # Placeholder for parent solution vector
+
+        # Parent solution vector in string format (cant store lists)
         @orm.declared_attr
-        def p_sol(cls) -> orm.Mapped[float]:  # noqa
-            return cls.__p_sol_impl()
+        def solution(cls) -> orm.Mapped[list[float]]:  # noqa
+            return cls.__solution_impl()
 
     __type_tgenotype: ClassVar[Type[TGenotype]]  # type: ignore[misc]
     __population_table: ClassVar[str]
@@ -130,5 +131,5 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
         return orm.mapped_column(nullable=False)
     
     @classmethod
-    def __p_sol_impl(cls) -> orm.Mapped[float]:
-        return orm.mapped_column(nullable=False)
+    def __solution_impl(cls) -> orm.Mapped[list[float]]:
+        return orm.mapped_column(JSON, nullable=False)

@@ -1,14 +1,12 @@
-""" Parent/reproducer experimentation """
+""" Deconsturcted generational step for variable exploration """
+
 import logging
 import os
-import sys
-from time import localtime, perf_counter
+import json
 from typing import Any
 from tqdm import tqdm
 import argparse
-import plotille
 
-import cma
 import config
 import multineat
 import numpy as np
@@ -22,9 +20,7 @@ from database_components import (
     Individual,
     Population,
 )
-from evaluator_body_script import Evaluator as Evaluator_body
 from evaluator_brain_script import Evaluator as Evaluator_brain
-#from evaluator_brain_script import Evaluator as Evaluator_brain
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -41,235 +37,6 @@ from revolve2.experimentation.logging import setup_logging
 from revolve2.experimentation.optimization.ea import population_management, selection
 from revolve2.experimentation.rng import make_rng, seed_from_time
 
-# Morphology optimization
-class ParentSelector(Selector):
-    """Selector class for parent selection."""
-
-    rng: np.random.Generator
-    offspring_size: int
-
-    def __init__(self, offspring_size: int, rng: np.random.Generator) -> None:
-        """
-        Initialize the parent selector.
-
-        :param offspring_size: The offspring size.
-        :param rng: The rng generator.
-        """
-        self.offspring_size = offspring_size
-        self.rng = rng
-
-    def select(
-        self, population: Population, **kwargs: Any
-    ) -> tuple[npt.NDArray[np.int_], dict[str, Population]]:
-        """
-        Select the parents.
-
-        :param population: The population of robots.
-        :param kwargs: Other parameters.
-        :return: The parent pairs.
-        """
-        return np.array(
-            [
-                selection.multiple_unique(
-                    selection_size=2,
-                    population=[
-                        individual.genotype for individual in population.individuals
-                    ],
-                    fitnesses=[
-                        individual.fitness for individual in population.individuals
-                    ],
-                    selection_function=lambda _, fitnesses: selection.tournament(
-                        rng=self.rng, fitnesses=fitnesses, k=2
-                    ),
-                )
-                for _ in range(self.offspring_size)
-            ],
-        ), {"parent_population": population}
-
-class SurvivorSelector(Selector):
-    """Selector class for survivor selection."""
-
-    rng: np.random.Generator
-
-    def __init__(self, rng: np.random.Generator) -> None:
-        """
-        Initialize the parent selector.
-
-        :param rng: The rng generator.
-        """
-        self.rng = rng
-
-    def select(
-        self, population: Population, children: Population
-    ) -> tuple[Population, dict[str, Any]]:
-        """
-        Select survivors using a tournament.
-
-        :param population: The population the parents come from.
-        :param children: Population of children.
-        :param kwargs: The offspring, with key 'offspring_population'.
-        :returns: A newly created population.
-        :raises ValueError: If the population is empty.
-        """
-        
-        offspring, offspring_fitness, offspring_solution = self.setupChildren(children)
-
-        original_survivors, offspring_survivors = population_management.steady_state(
-            old_genotypes=[i.genotype for i in population.individuals],
-            old_fitnesses=[i.fitness for i in population.individuals],
-            new_genotypes=offspring,
-            new_fitnesses=offspring_fitness,
-            selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
-                selection_size=n,
-                population=genotypes,
-                fitnesses=fitnesses,
-                selection_function=lambda _, fitnesses: selection.tournament(
-                    rng=self.rng, fitnesses=fitnesses, k=2
-                ),
-            ),
-        )
-
-        return (
-            Population(
-                individuals=[
-                    Individual(
-                        genotype=population.individuals[i].genotype,
-                        fitness=population.individuals[i].fitness,
-                        solution=population.individuals[i].solution,
-                    )
-                    for i in original_survivors
-                ]
-                + [
-                    Individual(
-                        genotype=offspring[i],
-                        fitness=offspring_fitness[i],
-                        solution=offspring_solution[i],
-                    )
-                    for i in offspring_survivors
-                ]
-            ),
-            {},
-        )
-    
-    def setupChildren(
-            self, children: Population):
-        """
-        Extract the genotypes and fitnesses for correct formatting.
-        
-        :param children: Population of children.
-        """
-        
-        genotypes = []
-        fitnesses = []
-        solutions = []
-        
-        for child in children.individuals:
-            genotypes.append(child.genotype)
-            fitnesses.append(child.fitness)
-            solutions.append(child.solution)
-            
-        return genotypes, fitnesses, solutions
-
-class CrossoverReproducer(Reproducer):
-    """A simple crossover reproducer using multineat."""
-
-    rng: np.random.Generator
-    innov_db_body: multineat.InnovationDatabase
-    innov_db_brain: multineat.InnovationDatabase
-
-    def __init__(
-        self,
-        rng: np.random.Generator,
-        innov_db_body: multineat.InnovationDatabase,
-        innov_db_brain: multineat.InnovationDatabase,
-    ):
-        """
-        Initialize the reproducer.
-
-        :param rng: The random generator.
-        :param innov_db_body: The innovation database for the body.
-        :param innov_db_brain: The innovation database for the brain.
-        """
-        self.rng = rng
-        self.innov_db_body = innov_db_body
-        self.innov_db_brain = innov_db_brain
-
-    def reproduce(
-        self, parentPairs: list[list[int]], 
-        parent_population: dict()) -> list[Genotype]:
-        """
-        Reproduce the population by crossover.
-
-        :param parentPairs: Pairs of parents for the children.
-        :param population: Population of parents.
-        :return: The genotypes of the children.
-        """
-
-        # Extract population and perform crossover/mutation
-        parent_population = parent_population.get("parent_population")
-        offspring_genotypes = [
-            Genotype.crossover(
-                parent_population.individuals[parent1_i].genotype,
-                parent_population.individuals[parent2_i].genotype,
-                self.rng,
-            ).mutate(self.innov_db_body, self.innov_db_brain, self.rng)
-            for parent1_i, parent2_i in parentPairs
-        ]
-    
-        # Output population of children (no fitnesses/solutions yet)
-        children = Population(
-            individuals = [
-                Individual(genotype = g_child,
-                           fitness = None,
-                           solution = None)
-                for g_child in offspring_genotypes
-                ]
-            )
-        
-        children = self.insertSolution(children, parent_population, parentPairs)
-        
-        return children
-    
-    def insertSolution(
-            self, children: Population, population: Population,
-            parentPairs: list[list[int]]) -> Population:
-        """
-        Fill in the best performing parent's solution
-        
-        :param population: Population of all individuals minus the children.
-        :param children: Population of children.
-        """
-        
-        solutions = self.findParentSolutions(parentPairs, population)
-        
-        for idx, sol in enumerate(solutions):
-            children.individuals[idx].solution = sol
-        
-        return children
-        
-    def findParentSolutions(
-            self, parentPairs: list[list[int]], population: Population) -> list[list[float]]:
-        """
-        Finds the best parent solution for a child given its parent pair.
-
-        :param parentPairs: List of parent index pairs.
-        :param population: Population of parents.
-        """
-        best_solutions = []
-        for (p1, p2) in parentPairs:
-            if population.individuals[p1].fitness > population.individuals[p2].fitness:
-                idx = p1
-            else: idx = p2
-            
-            best_solutions.append(population.individuals[idx].solution)
-            
-        return(best_solutions)
-    
-        
-        children = self.insertSolution(children, population, parentPairs)
-        return(children)
-    
-# Optimizer (DE only)
 # Brain optimizer
 class BrainOptimizerDE(Learner):
     """Optimizer class (DE)"""
@@ -465,12 +232,264 @@ class BrainOptimizerDE(Learner):
                 solution = solution[:sol_size]
             else:
                 sample = np.random.uniform(
-                    low=-1.0, high=1.0, size = sol_size - len(solutions))
+                    low=-1.0, high=1.0, size = sol_size - len(solution))
                 solution = np.concatenate((solution, sample)).tolist()
                 
             children.individuals[idx].solution = solution
         
-        return children            
+        return children
+
+# Morphology optimization
+class ParentSelector(Selector):
+    """Selector class for parent selection."""
+
+    rng: np.random.Generator
+    offspring_size: int
+
+    def __init__(self, offspring_size: int, rng: np.random.Generator) -> None:
+        """
+        Initialize the parent selector.
+
+        :param offspring_size: The offspring size.
+        :param rng: The rng generator.
+        """
+        self.offspring_size = offspring_size
+        self.rng = rng
+
+    def select(
+        self, population: Population, **kwargs: Any
+    ) -> tuple[npt.NDArray[np.int_], dict[str, Population]]:
+        """
+        Select the parents.
+
+        :param population: The population of robots.
+        :param kwargs: Other parameters.
+        :return: The parent pairs.
+        """
+        return np.array(
+            [
+                selection.multiple_unique(
+                    selection_size=2,
+                    population=[
+                        individual.genotype for individual in population.individuals
+                    ],
+                    fitnesses=[
+                        individual.fitness for individual in population.individuals
+                    ],
+                    selection_function=lambda _, fitnesses: selection.tournament(
+                        rng=self.rng, fitnesses=fitnesses, k=2
+                    ),
+                )
+                for _ in range(self.offspring_size)
+            ],
+        ), {"parent_population": population}
+    
+    def decodeSolutions(
+            self, population: Population) -> Population:
+        """
+        Decode the solutions into the correct list format.
+        
+        :param population: Population of robots.
+        """
+        
+        pass
+
+class SurvivorSelector(Selector):
+    """Selector class for survivor selection."""
+
+    rng: np.random.Generator
+
+    def __init__(self, rng: np.random.Generator) -> None:
+        """
+        Initialize the parent selector.
+
+        :param rng: The rng generator.
+        """
+        self.rng = rng
+
+    def select(
+        self, population: Population, children: Population
+    ) -> tuple[Population, dict[str, Any]]:
+        """
+        Select survivors using a tournament.
+
+        :param population: The population the parents come from.
+        :param children: Population of children.
+        :param kwargs: The offspring, with key 'offspring_population'.
+        :returns: A newly created population.
+        :raises ValueError: If the population is empty.
+        """
+        
+        offspring, offspring_fitness, offspring_solution = self.setupChildren(children)
+
+        original_survivors, offspring_survivors = population_management.steady_state(
+            old_genotypes=[i.genotype for i in population.individuals],
+            old_fitnesses=[i.fitness for i in population.individuals],
+            new_genotypes=offspring,
+            new_fitnesses=offspring_fitness,
+            selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
+                selection_size=n,
+                population=genotypes,
+                fitnesses=fitnesses,
+                selection_function=lambda _, fitnesses: selection.tournament(
+                    rng=self.rng, fitnesses=fitnesses, k=2
+                ),
+            ),
+        )
+
+        return (
+            Population(
+                individuals=[
+                    Individual(
+                        genotype=population.individuals[i].genotype,
+                        fitness=population.individuals[i].fitness,
+                        solution=population.individuals[i].solution,
+                    )
+                    for i in original_survivors
+                ]
+                + [
+                    Individual(
+                        genotype=offspring[i],
+                        fitness=offspring_fitness[i],
+                        solution=offspring_solution[i],
+                    )
+                    for i in offspring_survivors
+                ]
+            ),
+            {},
+        )
+    
+    def setupChildren(
+            self, children: Population):
+        """
+        Extract the genotypes and fitnesses for correct formatting.
+        
+        :param children: Population of children.
+        """
+        
+        genotypes = []
+        fitnesses = []
+        solutions = []
+        
+        for child in children.individuals:
+            genotypes.append(child.genotype)
+            fitnesses.append(child.fitness)
+            solutions.append(child.solution)
+            
+        return genotypes, fitnesses, solutions
+    
+    def encodeSolutions(
+            self, population: Population) -> str:
+        """
+        Convert solutions (list of floats) into a string for compatibility.
+        
+        :param population: Population of robots.
+        """
+        
+        for i in range(len(population.individuals)):
+            population.individuals[i].solution = json.dumps(
+                population.individuals[i].solution)
+            
+        return population
+
+class CrossoverReproducer(Reproducer):
+    """A simple crossover reproducer using multineat."""
+
+    rng: np.random.Generator
+    innov_db_body: multineat.InnovationDatabase
+    innov_db_brain: multineat.InnovationDatabase
+
+    def __init__(
+        self,
+        rng: np.random.Generator,
+        innov_db_body: multineat.InnovationDatabase,
+        innov_db_brain: multineat.InnovationDatabase,
+    ):
+        """
+        Initialize the reproducer.
+
+        :param rng: The random generator.
+        :param innov_db_body: The innovation database for the body.
+        :param innov_db_brain: The innovation database for the brain.
+        """
+        self.rng = rng
+        self.innov_db_body = innov_db_body
+        self.innov_db_brain = innov_db_brain
+
+    def reproduce(
+        self, parentPairs: list[list[int]], 
+        parent_population: dict()) -> list[Genotype]:
+        """
+        Reproduce the population by crossover.
+
+        :param parentPairs: Pairs of parents for the children.
+        :param population: Population of parents.
+        :return: The genotypes of the children.
+        """
+
+        # Extract population and perform crossover/mutation
+        parent_population = parent_population.get("parent_population")
+        offspring_genotypes = [
+            Genotype.crossover(
+                parent_population.individuals[parent1_i].genotype,
+                parent_population.individuals[parent2_i].genotype,
+                self.rng,
+            ).mutate(self.innov_db_body, self.innov_db_brain, self.rng)
+            for parent1_i, parent2_i in parentPairs
+        ]
+    
+        # Output population of children (no fitnesses/solutions yet)
+        children = Population(
+            individuals = [
+                Individual(genotype = g_child,
+                           fitness = None,
+                           solution = None)
+                for g_child in offspring_genotypes
+                ]
+            )
+        
+        children = self.insertSolution(children, parent_population, parentPairs)
+        
+        return children
+    
+    def insertSolution(
+            self, children: Population, population: Population,
+            parentPairs: list[list[int]]) -> Population:
+        """
+        Fill in the best performing parent's solution
+        
+        :param population: Population of all individuals minus the children.
+        :param children: Population of children.
+        """
+        
+        solutions = self.findParentSolutions(parentPairs, population)
+        
+        for idx, sol in enumerate(solutions):
+            children.individuals[idx].solution = sol
+        
+        return children
+        
+    def findParentSolutions(
+            self, parentPairs: list[list[int]], population: Population) -> list[list[float]]:
+        """
+        Finds the best parent solution for a child given its parent pair.
+
+        :param parentPairs: List of parent index pairs.
+        :param population: Population of parents.
+        """
+        best_solutions = []
+        for (p1, p2) in parentPairs:
+            if population.individuals[p1].fitness > population.individuals[p2].fitness:
+                idx = p1
+            else: idx = p2
+            
+            best_solutions.append(population.individuals[idx].solution)
+            
+        return(best_solutions)
+    
+        
+        children = self.insertSolution(children, population, parentPairs)
+        return(children)
 
 # Database
 def save_to_db(dbengine: Engine, generation: Generation) -> None:
@@ -483,30 +502,39 @@ def save_to_db(dbengine: Engine, generation: Generation) -> None:
     logging.debug("Saving generation.")
     with Session(dbengine, expire_on_commit=False) as session:
         session.add(generation)
-        session.commit()    
-
+        session.commit()
+        
 # Setup
+# Database setup
+# Try to remove old database
+try:
+    os.remove("test_db.sqlite")
+except:
+    pass
+
 # Open the database, only if it does not already exists.
 dbengine = open_database_sqlite(
-    "test_2.sqlite", open_method=OpenMethod.NOT_EXISTS_AND_CREATE
+    "test_db.sqlite", open_method=OpenMethod.NOT_EXISTS_AND_CREATE
 )
+
 # Create the structure of the database.
 Base.metadata.create_all(dbengine)
 
+# Experiment setup:
 rng_seed = seed_from_time()
 rng = make_rng(rng_seed)
-experiment = Experiment(rng_seed=rng_seed)
-innov_db_body = multineat.InnovationDatabase()
-innov_db_brain = multineat.InnovationDatabase()
 
+# Create and save the experiment instance.
+experiment = Experiment(rng_seed=rng_seed)
+logging.debug("Saving experiment configuration.")
 with Session(dbengine) as session:
     session.add(experiment)
     session.commit()
-
+    
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-learner = BrainOptimizerDE()
+learner = BrainOptimizerDE()    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(
@@ -520,7 +548,7 @@ modular_robot_evolution = ModularRobotEvolution(
     learner=learner
 )
 
-# Initial population
+# Generate the initial population's genotypes
 initial_genotypes = [
     Genotype.random(
         innov_db_body=innov_db_body,
@@ -530,26 +558,21 @@ initial_genotypes = [
     for _ in range(config.POPULATION_SIZE_BODY)
 ]
 
-#initial_fitnesses = evaluator_body.evaluate(initial_genotypes)
-initial_fitnesses = config.POPULATION_SIZE_BODY * [0.0]
-
-# Create a population of individuals, combining genotype with fitness.
-#p_sol = np.random.normal(size = 4).tolist()
-print("Initializing population...\n")
+# Create the initial population (0 fitness and no solution)
 population = Population(
     individuals=[
         Individual(genotype=genotype, fitness=0.0,
-                   solution = None)
-        for genotype, fitness in zip(
-            initial_genotypes, initial_fitnesses, strict=True
-        )
-    ]
-)
-
-# Train the initial population
-optimizer = BrainOptimizerDE()
+                   solution = [])
+        for genotype in initial_genotypes
+        ]
+    )
 
 # Finish the zeroth generation and save it to the database.
 generation = Generation(
-    experiment=experiment, generation_index=0, population=population
+    experiment=experiment, generation_index=0, population=population,
 )
+save_to_db(dbengine, generation)
+
+
+
+
