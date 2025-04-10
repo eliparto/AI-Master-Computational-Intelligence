@@ -1,17 +1,19 @@
-""" Navigating model for targeted locomotion """
+""" Navigating model for targeted locomotion 
+TODO: - Normalize inputs (positions as ratio between bounds)
+"""
 
 import torch
 import torch.nn as nn
 import numpy as np
 from matplotlib import pyplot as plt
 
-from sim_torch import Robot, genParams
+from sim_torch_position import Robot, genParams
 
 class NN(nn.Module):
     def __init__(self):
         super().__init__()
         self.stack = nn.Sequential(
-            nn.Linear(2, 32),
+            nn.Linear(3, 32),
             nn.ReLU(),
             nn.Linear(32, 3),
             nn.ReLU()
@@ -24,43 +26,50 @@ class NN(nn.Module):
         return x
     
 def trainModel(model):
-    velocities, startOrientation, loc_start, loc_target = genParams(bounds, k, sd)
-    robot = Robot(velocities, startOrientation, loc_start, loc_target)
-    outputs = []
+    """
+    Initialize a robot and train it.
+    :input_tensor: [pos_x, pos_y, alpha].
+    :actionWeights: Vect w containing the multiplication factors for the velocity vector [v, w_l, w_r].
+    """
+    velocities, alpha_start, pos_start, pos_target = genParams(bounds, sd_v, sd_w)
+    robot = Robot(velocities, pos_target)
     losses = []
-    print(f"Velocities: {velocities}")
+    print(f"Robot velocities: {velocities}")
     
     model.train()
+    pos_robot = pos_start
+    alpha = alpha_start
+    input_tensor = torch.concatenate((pos_robot, alpha_start))
     for i in range(generations):
-        optimizer.zero_grad()
-        t_in = torch.tensor([
-            torch.norm(robot.pos - robot.target_pos), robot.orient])
-        w_out = model(t_in)
-        robot.step(w_out)
-
-
-        loss = torch.norm(robot.pos - robot.target_pos)
+        action_weights = model(input_tensor)
+        pos_robot, alpha = robot.step(pos_robot, alpha, action_weights)
+        
+        pos_robot = torch.tensor(pos_robot, requires_grad=True)
+        alpha = torch.tensor(alpha, requires_grad=True)
+        
+        loss = torch.norm((pos_robot - pos_target))
         loss.backward()
         optimizer.step()
+        optimizer.zero_grad()
         
+        # Input for the next step
+        input_tensor = torch.concatenate((pos_robot, alpha))
+        losses.append(loss.item())
         
-        losses.append(loss.item()) 
-        #outputs = torch.stack((outputs, w_out))
+    plt.plot(losses)
+    plt.title("Loss")
+    plt.show()
+    robot.plotTrajectory()
         
-    return robot, losses, outputs
-        
-def abs_dist(t):
-    """
-    Return sqrt(x_t^2 + y_t^2).
-    """
-    return torch.sqrt(torch.sum(torch.square(t)))
+    return robot, losses
         
 # Setup
 model = NN()
-loss_func = nn.L1Loss()
+loss_func = None
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-generations = 2000
+generations = 100
 
 bounds = (-50, 50)
 k = 2
-sd = 1
+sd_v = 0.8
+sd_w = 0.5
