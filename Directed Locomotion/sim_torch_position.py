@@ -25,10 +25,15 @@ class Robot():
         :weights: [w_forward, w_rot_left, w_rot_right]
         """
         
+        # Denormalize
+        pos = pos * 50
+        alpha = alpha * tau
+        
         # TODO: Detemine if masking the left/right rotational weights is useful
         actions = self.velocities * weights
-        alpha = alpha + weights[1] + weights[2]
-        disp = torch.stack((torch.cos(alpha), torch.sin(alpha))).view(2)
+        alpha = alpha + (actions[1] + actions[2])
+        #alpha = alpha - (weights[2] + weights[1])
+        disp = actions[0] * torch.stack((torch.cos(alpha), torch.sin(alpha))).view(2)
         pos = pos + disp
         
         # Position logging
@@ -87,3 +92,4 @@ bounds_locs = bounds_space
 k = 2
 sd_v = 0.8
 sd_w = 0.3
+tau = np.pi * 2

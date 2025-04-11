@@ -13,16 +13,16 @@ class NN(nn.Module):
     def __init__(self):
         super().__init__()
         self.stack = nn.Sequential(
-            nn.Linear(3, 32),
+            nn.Linear(3, 32),     # Input: [x, y, alpha]
+            nn.Tanh(),            # Smoother transitions
+            nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(32, 3),
-            nn.ReLU()
-            )
-        self.softmax = nn.Softmax(dim = 0)
+            nn.Linear(16, 3),     # Output: [forward, left, right]
+            nn.Sigmoid()          # To scale velocities ∈ [0, 1]
+        )
         
     def forward(self, x):
         x = self.stack(x)
-        x = self.softmax(x)
         return x
     
 def trainModel(model):
@@ -34,18 +34,21 @@ def trainModel(model):
     velocities, alpha_start, pos_start, pos_target = genParams(bounds, sd_v, sd_w)
     robot = Robot(velocities, pos_target)
     losses = []
+    w_out = []
     print(f"Robot velocities: {velocities}")
     
     model.train()
     pos_robot = pos_start
     alpha = alpha_start
+    
+    # Normalize position and angle
+    pos_robot = pos_robot / 50
+    alpha = alpha / tau
+    
     input_tensor = torch.concatenate((pos_robot, alpha_start))
     for i in range(generations):
         action_weights = model(input_tensor)
         pos_robot, alpha = robot.step(pos_robot, alpha, action_weights)
-        
-        pos_robot = torch.tensor(pos_robot, requires_grad=True)
-        alpha = torch.tensor(alpha, requires_grad=True)
         
         loss = torch.norm((pos_robot - pos_target))
         loss.backward()
@@ -53,7 +56,12 @@ def trainModel(model):
         optimizer.zero_grad()
         
         # Input for the next step
+        pos_robot = pos_robot / 50
+        alpha = alpha / tau
+        pos_robot = pos_robot.detach()
+        alpha = alpha.detach()
         input_tensor = torch.concatenate((pos_robot, alpha))
+        w_out.append(action_weights.tolist())
         losses.append(loss.item())
         
     plt.plot(losses)
@@ -61,15 +69,16 @@ def trainModel(model):
     plt.show()
     robot.plotTrajectory()
         
-    return robot, losses
+    return robot, losses, w_out
         
 # Setup
+bounds = (-50, 50)
+k = 2
+tau = np.pi * 2
+sd_v = 0.8
+sd_w = 0.5
+
 model = NN()
 loss_func = None
 optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-generations = 100
-
-bounds = (-50, 50)
-k = 2
-sd_v = 0.8
-sd_w = 0.5
+generations = 1000
