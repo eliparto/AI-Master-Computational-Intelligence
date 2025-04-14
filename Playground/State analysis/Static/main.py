@@ -1,8 +1,11 @@
-"""Main script for the example."""
+""" Manually actuate hinges to analyze position and orientation. """
 
 import logging
 
 from pyrr import Vector3
+
+from matplotlib import pyplot as plt
+import numpy as np
 
 from revolve2.experimentation.logging import setup_logging
 from revolve2.modular_robot import ModularRobot, ModularRobotControlInterface
@@ -13,6 +16,15 @@ from revolve2.modular_robot.sensor_state import ModularRobotSensorState
 from revolve2.modular_robot_simulation import ModularRobotScene, simulate_scenes
 from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import modular_robots_v2, terrains
+from revolve2.standards.simulation_parameters import make_standard_batch_parameters
+
+from revolve2.experimentation.logging import setup_logging
+from revolve2.experimentation.rng import make_rng_time_seed
+from revolve2.modular_robot import ModularRobot
+from revolve2.modular_robot.brain.cpg import BrainCpgNetworkNeighborRandom
+from revolve2.modular_robot_simulation import ModularRobotScene, simulate_scenes
+from revolve2.simulators.mujoco_simulator import LocalSimulator
+from revolve2.standards import fitness_functions, modular_robots_v2, terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
 
 
@@ -65,19 +77,19 @@ class ANNBrainInstance(BrainInstance):
             sensor_state.get_active_hinge_sensor_state(sensor).position
             for sensor in sensors
         ]
-        logging.info(f"current positions: {current_positions}")
+        #logging.info(f"current positions: {current_positions}")
 
         # Get the imu sensor state
-        imu_state = sensor_state.get_imu_sensor_state(self.imu_sensor)
-        logging.info(f"orientation: {imu_state.orientation}")
-        logging.info(f"angular rate: {imu_state.angular_rate}")
-        logging.info(f"specific force: {imu_state.specific_force}")
+        #imu_state = sensor_state.get_imu_sensor_state(self.imu_sensor)
+        #logging.info(f"orientation: {imu_state.orientation}")
+        #logging.info(f"angular rate: {imu_state.angular_rate}")
+        #logging.info(f"specific force: {imu_state.specific_force}")
 
         # Here you can implement your controller.
         # The current controller does nothing except for always settings the joint positions to 0.5.
-        for active_hinge, sensor in zip(self.active_hinges, sensors):
-            target = 0.5
-            control_interface.set_active_hinge_target(active_hinge, target)
+        # for active_hinge, sensor in zip(self.active_hinges, sensors):
+        #     target = 0.5
+        #     control_interface.set_active_hinge_target(active_hinge, target)
 
 
 class ANNBrain(Brain):
@@ -111,10 +123,23 @@ class ANNBrain(Brain):
             imu_sensor=self.imu_sensor,
         )
 
+def quaternion_to_euler(q):
+    w, x, y, z = q
+
+    # X-axis rotation (roll)
+    roll = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
+
+    # Y-axis rotation (pitch)
+    pitch = np.arcsin(2*(w*y - z*x))
+
+    # Z-axis rotation (yaw)
+    yaw = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+
+    return roll, pitch, yaw  # In radians
 
 """Run the simulation."""
 # Set up logging.
-setup_logging()
+setup_logging(file_name="log.txt")
 
 # Create a body for the robot.
 body = modular_robots_v2.gecko_v2()
@@ -135,11 +160,39 @@ scene = ModularRobotScene(terrain=terrains.flat())
 scene.add_robot(robot)
 
 # Simulate the scene.
-simulator = LocalSimulator(headless=True)
-simulate_scenes(
+batch_parameters = make_standard_batch_parameters()
+batch_parameters.simulation_time = 300
+simulator = LocalSimulator(viewer_type="native", headless=False)
+
+# Obtain the state of the simulation, measured at a predefined interval as defined in the batch parameters.
+scene_states = simulate_scenes(
     simulator=simulator,
-    batch_parameters=make_standard_batch_parameters(),
+    batch_parameters=batch_parameters,
     scenes=scene,
 )
+
+quats = []
+roll = []
+pitch = []
+yaw = []
+for scene_state in scene_states:
+    state = scene_state.get_modular_robot_simulation_state(robot)
+    pos = state.get_pose().orientation
+    quats.append(pos)
+
+for q in quats:
+    r, p, y = quaternion_to_euler(q)
+    roll.append(r)
+    pitch.append(p)
+    yaw.append(y)
+
+names = ["Roll", "Pitch", "Yaw"]   
+roll = np.array(roll)
+pitch = np.array(pitch)
+yaw = np.array(yaw)
+
+np.save("roll.npy", roll)
+np.save("pitch.npy", pitch)
+np.save("yaw.npy", yaw)
 
 

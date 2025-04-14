@@ -45,7 +45,7 @@ scene.add_robot(robot)
 
 # Create the simulator.
 # We set enable the headless flag, which will prevent visualization of the simulation, speeding it up.
-simulator = LocalSimulator(viewer_type="native", headless=False)
+simulator = LocalSimulator(viewer_type="native", headless=True)
 batch_parameters = make_standard_batch_parameters()
 
 # Obtain the state of the simulation, measured at a predefined interval as defined in the batch parameters.
