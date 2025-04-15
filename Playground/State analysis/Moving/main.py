@@ -2,6 +2,7 @@
 
 import logging
 import numpy as np
+from matplotlib import pyplot as plt
 
 from revolve2.experimentation.logging import setup_logging
 from revolve2.experimentation.rng import make_rng_time_seed
@@ -12,26 +13,13 @@ from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import fitness_functions, modular_robots_v2, terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
 
-def quaternion_to_euler(q):
-    w, x, y, z = q
-
-    # X-axis rotation (roll)
-    roll = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
-
-    # Y-axis rotation (pitch)
-    pitch = np.arcsin(2*(w*y - z*x))
-
-    # Z-axis rotation (yaw)
-    yaw = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
-
-    return roll, pitch, yaw  # In radians
+# Modified fitness calculator
+from revolve2.standards.fitness_functions import FitnessEvaluator
 
 
 """Run the simulation."""
-# Set up logging.
+# Setup
 setup_logging()
-
-# Set up a random number generator.
 rng = make_rng_time_seed()
 
 # Create the robot.
@@ -47,6 +35,7 @@ scene.add_robot(robot)
 # We set enable the headless flag, which will prevent visualization of the simulation, speeding it up.
 simulator = LocalSimulator(viewer_type="native", headless=True)
 batch_parameters = make_standard_batch_parameters()
+batch_parameters.simulation_time = 60
 
 # Obtain the state of the simulation, measured at a predefined interval as defined in the batch parameters.
 scene_states = simulate_scenes(
@@ -60,28 +49,50 @@ Using the previously obtained scene_states we can now start to evaluate our robo
 Note in this example we simply use x-y displacement, but you can do any other way of evaluation as long as the required data is in the scene states.
 """
 # Get the state at the beginning and end of the simulation.
-scene_state_begin = scene_states[0]
-scene_state_end = scene_states[-1]
+# scene_state_begin = scene_states[0]
+# scene_state_end = scene_states[-1]
 
 # Retrieve the state of the modular robot, which also contains the location of the robot.
-robot_state_begin = scene_state_begin.get_modular_robot_simulation_state(robot)
-robot_state_end = scene_state_end.get_modular_robot_simulation_state(robot)
+# robot_state_begin = scene_state_begin.get_modular_robot_simulation_state(robot)
+# robot_state_end = scene_state_end.get_modular_robot_simulation_state(robot)
 
-# Calculate the xy displacement, using the locations of the robot.
-xy_displacement = fitness_functions.xy_displacement(
-    robot_state_begin, robot_state_end
-)
+# Convert scenes into states
+sim_states = [
+    scene.get_modular_robot_simulation_state(robot) for scene in scene_states
+    ]
 
-logging.info(xy_displacement)
-logging.info("Quaternion data:")
-logging.info(robot_state_end.get_pose().orientation)
+# Set up fitness evaluator and calculate fitnesses
+Fit_eval = FitnessEvaluator(sim_states)
+fit_v, beta = Fit_eval.xy_displacement()
+fit_rot, deltas_pure, deltas_filtered, orients = Fit_eval.rotation()
+positions = Fit_eval.displacement()
 
-quat = robot_state_end.get_pose().orientation
-roll, pitch, yaw = quaternion_to_euler(quat)
+print(f"Displacement: {fit_v}")
+print(f"Rotation: {fit_rot}")
 
-logging.info(f"\nROLL\n{roll} rad\n{np.degrees(roll)} deg")
-logging.info(f"\nPITCH\n{pitch} rad\n{np.degrees(pitch)} deg")
-logging.info(f"\nYAW\n{yaw} rad\n{np.degrees(yaw)} deg")
+# Plot movements
+# Orientation deltas
+names = ["No filter", "Low pass filter"]
+plt.plot(deltas_pure)
+plt.plot(deltas_filtered)
+plt.title("Orientation deltas [radians]")
+plt.legend(names)
+plt.show()
+
+# Orientation
+plt.plot(orients)
+plt.title("Orientation [radians]")
+plt.show()
+
+# Position
+plt.scatter(positions[:,0], positions[:,1],
+            c = np.linspace(0, 10, len(positions)))
+plt.plot(positions[:,0], positions[:,1], lw = 0.3, c = "red")
+plt.text(0, 0, s = "Start")
+plt.text(positions[-1,0], positions[-1,-1], s = "Finish")
+plt.title("Robot position")
+plt.colorbar(label="Time [s]")
+plt.show()
 
 
 
