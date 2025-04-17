@@ -73,23 +73,54 @@ class BrainOptimizerDE(Learner):
                 output_mapping=output_mapping,
                 )
                 
-                # Sample target and candidate solutions from stored parent solution
-                sol_t, sol_c = self.DE(population.individuals[idx].solution)
+                # # Sample target and candidate solutions from stored parent solution
+                # sol_t, sol_c = self.DE(population.individuals[idx].solution)
 
-                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
-                                leave = False):
-                    targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
-                    sol_t, sol_c = self.DE(targets)
+                # for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
+                #                 leave = False):
+                #     targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
+                #     sol_t, sol_c = self.DE(targets)
                     
-                # Update fitness and solution
-                targets, max_fit = self.DE_optimize(sol_t, sol_c, evaluator)
-                population.individuals[idx].solution = targets[0].tolist()
-                population.individuals[idx].fitness = max_fit
+                # # Update fitness and solution
+                # targets, max_fit = self.DE_optimize(sol_t, sol_c, evaluator)
+                # population.individuals[idx].solution = targets[0].tolist()
+                # population.individuals[idx].fitness = max_fit
                 
             else:
-                population.individuals[idx].fitness = 0.0
+                population.individuals[idx].fitness_forward = 0.0
+                population.individuals[idx].fitness_rot_l = 0.0
+                population.individuals[idx].fitness_rot_r = 0.0
+                
+            # Calculate individual's total fitness
+            population.individuals[idx].fitness_total = (
+                population.individuals[idx].fitness_forward + \
+                population.individuals[idx].fitness_forward + \
+                population.individuals[idx].fitness_forward
+                )
                 
         return population
+    
+    def getFitness(
+            self, fit_type: int, evaluator) -> None: # TODO: fix type casting
+        """
+        Train and learn fitness for specific action (moving forward or rotating).
+        :fit_type:  Integer stating type of training:
+                    1 -> Moving forward
+                    2 -> Rotating left
+                    3 -> Rotating right
+        """
+        if fit_type == 1: sol_t, sol_c = self.DE(
+                population.individuals[idx].solution_forward)
+        elif fit_type == 2: sol_t, sol_c = self.DE(
+                population.individuals[idx].solution_rot_l)
+        else: sol_t, sol_c = self.DE(
+            population.individuals[idx].solution_rot_r)
+        
+        for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
+                        leave = False):
+            targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
+            sol_t, sol_c = self.DE(targets)
+            
     
     def DE(
             self, vectors):
@@ -135,18 +166,22 @@ class BrainOptimizerDE(Learner):
     
     def DE_optimize(
             self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],
-            eval_class):
+            fit_type: int, evaluator):
         """
         Compare target vectors with candidate vectors for the next generation.
     
-        :param T: Target vectors
-        :param C: Candidate solutions
+        :param T: Target vectors.
+        :param C: Candidate solutions.
+        :fit_type: Integer stating movement type to optimize.
+        :evaluator: Fitness evaluator class.
         """
         
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
         solutions = np.vstack((T, C))
-        fitnesses = eval_class.evaluate(solutions)
+        if fit_type == 1: fitnesses, _, _, betas = evaluator.evaluate(solutions)
+        elif fit_type == 2: _, fitnesses, _, betas = evaluator.evaluate(solutions)
+        else: _, _, fitnesses, betas = evaluator.evaluate(solutions)
         
         # Sort targets by fitness (high to low)
         sort_idx = np.flip(np.argsort(fitnesses))
@@ -561,8 +596,10 @@ initial_genotypes = [
 # Create the initial population (0 fitness and no solution)
 population = Population(
     individuals=[
-        Individual(genotype=genotype, fitness=0.0,
-                   solution = [])
+        Individual(genotype=genotype, fitness_total=0.0, fitness_forward=0.0,
+                   fitness_rot_l=0.0, fitness_rot_r=0.0, beta = 0.0
+                   solution_forward=[], solution_rot_l=[], solution_rot_r=[]
+                   )
         for genotype in initial_genotypes
         ]
     )

@@ -1,4 +1,4 @@
-""" Main script for the FULL EXPERIMENTAL IMPLEMENTATION """
+""" Main script for the FULL EXPERIMENTAL IMPLEMENTATION (MULTIPARAM) """
 
 import logging
 import os
@@ -533,8 +533,11 @@ def run_experiment(dbengine: Engine) -> None:
     # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness=0.0,
-                       solution = None)
+            Individual(genotype=genotype, fitness_total=0.0, 
+                       fitness_forward=0.0, fitness_rot_l=0.0, 
+                       fitness_rot_r=0.0, solution_forward=[], 
+                       solution_rot_l=[], solution_rot_r=[]
+                       )
             for genotype in initial_genotypes
             ]
         )
