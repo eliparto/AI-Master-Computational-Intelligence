@@ -55,12 +55,13 @@ class Evaluator:
 
     def evaluate(
         self,
-        solutions: list[npt.NDArray[np.float_]],
+        solutions: list[npt.NDArray[np.float_]], fit_type: int
     ) -> npt.NDArray[np.float_]:
         """
         Evaluate multiple robots.
 
         :param solutions: Solutions to evaluate.
+        :fit_type: Integer determining fitness type to calculate.
         :returns: Fitnesses of the solutions.
         """
         # Create robots from the brain parameters.
@@ -91,21 +92,23 @@ class Evaluator:
             scenes=scenes,
         )
 
-        # TODO: Remove -> Calculate the xy displacements
-        xy_displacements = [
-            fitness_functions.xy_displacement(
-                states[0].get_modular_robot_simulation_state(robot),
-                states[-1].get_modular_robot_simulation_state(robot),
-            )
-            for robot, states in zip(robots, scene_states)
-        ]
+        # xy_displacements = [
+        #     fitness_functions.xy_displacement(
+        #         states[0].get_modular_robot_simulation_state(robot),
+        #         states[-1].get_modular_robot_simulation_state(robot),
+        #     )
+        #     for robot, states in zip(robots, scene_states)
+        # ]
+
+        fits_forward, betas = self.calcFitForward(robots, scene_states)
+        fits_rot_l = self.calcFitRotation(robots, scene_states)
         
-        fitnesses_forward, betas = self.calcFitForward(robots, scene_states)
-        fitnesses_rot_left = self.calcFitRotation(robots, scene_states)
-        fitnesses_rot_right = -fitness_rot_left
+        if fit_type == 0: fits = fits_forward
+        elif fit_type == 1: fits = fits_rot_l - fits_forward
+        else: fits = -fits_rot_l - fits_forward
         
+        return fits, betas
         # TODO: Compare xy-displacement to generated fitness array
-        return fitnesses_forward, fitnesses_rot_left, fitnesses_rot_right, betas
     
     def calcFitForward(
         self, robots: ModularRobot, scene_states) -> list[list[float], float]:
@@ -116,9 +119,9 @@ class Evaluator:
         """
         fitnesses = []
         betas = []
-        for robot, states in zip(robot, scene_states):
-            sim_state_begin = states[0].get_modular_robot_simulation(robot)
-            sim_state_end = states[-1].get_modular_robot_simulation(robot)
+        for robot, states in zip(robots, scene_states):
+            sim_state_begin = states[0].get_modular_robot_simulation_state(robot)
+            sim_state_end = states[-1].get_modular_robot_simulation_state(robot)
             
             # Start and end position vectors
             begin_pos = np.array([
@@ -137,7 +140,7 @@ class Evaluator:
             beta = np.arctan2(disp[0], disp[1])
             
             fitnesses.append(fitness)
-            betas.append(betas)
+            betas.append(beta)
             
         return np.array(fitnesses), np.array(betas)
     
@@ -153,8 +156,8 @@ class Evaluator:
             fitness = 0.0
             for idx in range(len(states)-1):
                 # Extract simulation states at time t and (t+1)
-                sim_state_t = states[idx].get_modular_robot_simulation(robot)
-                sim_state_t_1 = states[idx+1].get_modular_robot_simulation(robot)
+                sim_state_t = states[idx].get_modular_robot_simulation_state(robot)
+                sim_state_t_1 = states[idx+1].get_modular_robot_simulation_state(robot)
                 # Extract quaternions
                 quat_t = sim_state_t.get_pose().orientation
                 quat_t_1 = sim_state_t_1.get_pose().orientation

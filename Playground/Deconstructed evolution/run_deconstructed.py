@@ -1,4 +1,6 @@
-""" Deconsturcted generational step for variable exploration """
+""" Deconsturcted generational step for variable exploration 
+TODO:   - Remove unused functions (encode/decode)
+"""
 
 import logging
 import os
@@ -58,8 +60,8 @@ class BrainOptimizerDE(Learner):
         # Reformat solution vectors to the correct sizes
         population = self.setSolutionSizes(population, solution_sizes)
         
-        print("Optimizing brains")
-        for idx, body in enumerate(tqdm(bodies, leave = False)):
+        print("Body:")
+        for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
             cpg_network_structure, output_mapping = brains[idx]
             
@@ -73,54 +75,50 @@ class BrainOptimizerDE(Learner):
                 output_mapping=output_mapping,
                 )
                 
-                # # Sample target and candidate solutions from stored parent solution
-                # sol_t, sol_c = self.DE(population.individuals[idx].solution)
-
-                # for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
-                #                 leave = False):
-                #     targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
-                #     sol_t, sol_c = self.DE(targets)
+                # Learn the 3 different fitnesses
+                # Sample target and candidate solutions
+                for fit_type in tqdm(range(3), leave = False, position = 1):
+                    if fit_type == 1: sol_t, sol_c = self.DE(
+                            population.individuals[idx].solution_forward)
+                    elif fit_type == 2: sol_t, sol_c = self.DE(
+                            population.individuals[idx].solution_rot_l)
+                    else: sol_t, sol_c = self.DE(
+                        population.individuals[idx].solution_rot_r)
                     
-                # # Update fitness and solution
-                # targets, max_fit = self.DE_optimize(sol_t, sol_c, evaluator)
-                # population.individuals[idx].solution = targets[0].tolist()
-                # population.individuals[idx].fitness = max_fit
+                    for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
+                                    leave = False, position = 2):
+                        targets, _, _ = self.DE_optimize(sol_t, sol_c,
+                                                         fit_type, evaluator)
+                        sol_t, sol_c = self.DE(targets)
+                        
+                    # Update fitness and solution
+                    targets, max_fit, betas = self.DE_optimize(sol_t, sol_c, 
+                                                               fit_type, evaluator)
+                    
+                    if fit_type == 0:
+                        population.individuals[idx].solution_forward = targets[0].tolist()
+                        population.individuals[idx].fitness_forward = max_fit
+                        population.individuals[idx].beta = betas[0]
+                    elif fit_type == 1:
+                        population.individuals[idx].solution_rot_l = targets[0].tolist()
+                        population.individuals[idx].fitness_rot_l = max_fit
+                    else:
+                        population.individuals[idx].solution_rot_r = targets[0].tolist()
+                        population.individuals[idx].fitness_rot_r = max_fit
                 
             else:
                 population.individuals[idx].fitness_forward = 0.0
                 population.individuals[idx].fitness_rot_l = 0.0
                 population.individuals[idx].fitness_rot_r = 0.0
                 
-            # Calculate individual's total fitness
+            # Sum individual's fitnesses to total fitness
             population.individuals[idx].fitness_total = (
                 population.individuals[idx].fitness_forward + \
-                population.individuals[idx].fitness_forward + \
-                population.individuals[idx].fitness_forward
+                population.individuals[idx].fitness_rot_l + \
+                population.individuals[idx].fitness_rot_r
                 )
                 
         return population
-    
-    def getFitness(
-            self, fit_type: int, evaluator) -> None: # TODO: fix type casting
-        """
-        Train and learn fitness for specific action (moving forward or rotating).
-        :fit_type:  Integer stating type of training:
-                    1 -> Moving forward
-                    2 -> Rotating left
-                    3 -> Rotating right
-        """
-        if fit_type == 1: sol_t, sol_c = self.DE(
-                population.individuals[idx].solution_forward)
-        elif fit_type == 2: sol_t, sol_c = self.DE(
-                population.individuals[idx].solution_rot_l)
-        else: sol_t, sol_c = self.DE(
-            population.individuals[idx].solution_rot_r)
-        
-        for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN - 1),
-                        leave = False):
-            targets, _ = self.DE_optimize(sol_t, sol_c, evaluator)
-            sol_t, sol_c = self.DE(targets)
-            
     
     def DE(
             self, vectors):
@@ -166,28 +164,26 @@ class BrainOptimizerDE(Learner):
     
     def DE_optimize(
             self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],
-            fit_type: int, evaluator):
+            fit_type:int, evaluator) -> tuple[list[float], float]:
         """
         Compare target vectors with candidate vectors for the next generation.
     
-        :param T: Target vectors.
-        :param C: Candidate solutions.
-        :fit_type: Integer stating movement type to optimize.
-        :evaluator: Fitness evaluator class.
+        :param T: Target vectors
+        :param C: Candidate solutions
+        :fit_type: Integer denoting type of fitness to train for.
         """
         
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
         solutions = np.vstack((T, C))
-        if fit_type == 1: fitnesses, _, _, betas = evaluator.evaluate(solutions)
-        elif fit_type == 2: _, fitnesses, _, betas = evaluator.evaluate(solutions)
-        else: _, _, fitnesses, betas = evaluator.evaluate(solutions)
+        fitnesses, betas = evaluator.evaluate(solutions, fit_type)
         
-        # Sort targets by fitness (high to low)
+        # Sort targets and betas by fitness indices (high to low)
         sort_idx = np.flip(np.argsort(fitnesses))
         solutions = solutions[sort_idx]
+        betas = betas[sort_idx]
         
-        return solutions[:config.NUM_POPULATION_BRAIN], max(fitnesses)
+        return solutions[:config.NUM_POPULATION_BRAIN], max(fitnesses), betas
     
     def mutationIndices(
             self, t_pop) -> npt.NDArray[np.int_]:
@@ -246,7 +242,11 @@ class BrainOptimizerDE(Learner):
         
         for idx, sol_size in enumerate(sol_sizes):
             if sol_size == 0: sol_size = 1 # Prevent empty list as output
-            population.individuals[idx].solution = np.random.uniform(
+            population.individuals[idx].solution_forward = np.random.uniform(
+                low=-1.0, high=1.0, size=sol_size).tolist()
+            population.individuals[idx].solution_rot_l = np.random.uniform(
+                low=-1.0, high=1.0, size=sol_size).tolist()
+            population.individuals[idx].solution_rot_r = np.random.uniform(
                 low=-1.0, high=1.0, size=sol_size).tolist()
             
         return population
@@ -259,18 +259,31 @@ class BrainOptimizerDE(Learner):
         :param children: Population of children.
         :param sol_sizes: Correct sizes of the solution vectors.
         """
-        
+        # TODO: Parametrize solution vectors into matrix
         for idx, sol_size in enumerate(sol_sizes):
             if sol_size == 0: sol_size = 1 # Prevent empty list as output
-            solution = children.individuals[idx].solution
-            if len(solution) >= sol_size:
-                solution = solution[:sol_size]
+            solution_f = children.individuals[idx].solution_forward
+            solution_r_l = children.individuals[idx].solution_rot_l
+            solution_r_r = children.individuals[idx].solution_rot_r
+            
+            if len(solution_f) >= sol_size:
+                solution_f = solution_f[:sol_size]
+                solution_r_l = solution_r_l[:sol_size]
+                solution_r_r = solution_r_r[:sol_size]
             else:
-                sample = np.random.uniform(
-                    low=-1.0, high=1.0, size = sol_size - len(solution))
-                solution = np.concatenate((solution, sample)).tolist()
+                sample_f = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
+                solution_f = np.concatenate((solution, sample)).tolist()
+                sample_r_l = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
+                solution_r_l = np.concatenate((solution, sample)).tolist()
+                sample_r_r = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
+                solution_r_r = np.concatenate((solution, sample)).tolist()
                 
-            children.individuals[idx].solution = solution
+            children.individuals[idx].solution_f = solution_f
+            children.individuals[idx].solution_r_l = solution_r_l
+            children.individuals[idx].solution_r_r = solution_r_r
         
         return children
 
@@ -309,7 +322,7 @@ class ParentSelector(Selector):
                         individual.genotype for individual in population.individuals
                     ],
                     fitnesses=[
-                        individual.fitness for individual in population.individuals
+                        individual.fitness_total for individual in population.individuals
                     ],
                     selection_function=lambda _, fitnesses: selection.tournament(
                         rng=self.rng, fitnesses=fitnesses, k=2
@@ -318,16 +331,6 @@ class ParentSelector(Selector):
                 for _ in range(self.offspring_size)
             ],
         ), {"parent_population": population}
-    
-    def decodeSolutions(
-            self, population: Population) -> Population:
-        """
-        Decode the solutions into the correct list format.
-        
-        :param population: Population of robots.
-        """
-        
-        pass
 
 class SurvivorSelector(Selector):
     """Selector class for survivor selection."""
@@ -355,13 +358,13 @@ class SurvivorSelector(Selector):
         :raises ValueError: If the population is empty.
         """
         
-        offspring, offspring_fitness, offspring_solution = self.setupChildren(children)
+        offspring, o_fit_tot, o_fit_f, o_fit_r_l, o_fit_r_r, o_sol_f, o_sol_r_l, o_sol_r_r = self.setupChildren(children)
 
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
-            old_fitnesses=[i.fitness for i in population.individuals],
+            old_fitnesses=[i.fitness_total for i in population.individuals],
             new_genotypes=offspring,
-            new_fitnesses=offspring_fitness,
+            new_fitnesses=o_fit_tot,
             selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
                 selection_size=n,
                 population=genotypes,
@@ -377,16 +380,26 @@ class SurvivorSelector(Selector):
                 individuals=[
                     Individual(
                         genotype=population.individuals[i].genotype,
-                        fitness=population.individuals[i].fitness,
-                        solution=population.individuals[i].solution,
+                        fitness_total=population.individuals[i].fitness_total,
+                        fitness_forward=population.individuals[i].fitness_forward,
+                        fitness_rot_l=population.individuals[i].fitness_rot_l,
+                        fitness_rot_r=population.individuals[i].fitness_rot_r,
+                        solution_forward=population.individuals[i].solution_forward,
+                        solution_rot_l=population.individuals[i].solution_rot_l,
+                        solution_rot_r=population.individuals[i].solution_rot_r,
                     )
                     for i in original_survivors
                 ]
                 + [
                     Individual(
                         genotype=offspring[i],
-                        fitness=offspring_fitness[i],
-                        solution=offspring_solution[i],
+                        fitness_total=o_fit_tot[i],
+                        fitness_forward=o_fit_f[i],
+                        fitness_rot_l=o_fit_r_l[i],
+                        fitness_rot_r=o_fit_r_r[i],
+                        solution_forward=o_sol_f[i],
+                        solution_rot_l=o_sol_r_l[i],
+                        solution_rot_r=o_sol_r_r[i],
                     )
                     for i in offspring_survivors
                 ]
@@ -403,29 +416,27 @@ class SurvivorSelector(Selector):
         """
         
         genotypes = []
-        fitnesses = []
-        solutions = []
+        fitnesses_total = []
+        fitnesses_forward = []
+        fitnesses_rot_l = []
+        fitnesses_rot_r = []
+        solutions_forward = []
+        solutions_rot_l = []
+        solutions_rot_r = []
         
         for child in children.individuals:
             genotypes.append(child.genotype)
-            fitnesses.append(child.fitness)
-            solutions.append(child.solution)
+            fitnesses_total.append(child.fitness_total)
+            fitnesses_forward.append(child.fitness_forward)
+            fitnesses_rot_l.append(child.fitness_rot_l)
+            fitnesses_rot_r.append(child.fitness_rot_r)
+            solutions_forward.append(child.solution_forward)
+            solutions_rot_l.append(child.solution_rot_l)
+            solutions_rot_r.append(child.solution_rot_r)
             
-        return genotypes, fitnesses, solutions
-    
-    def encodeSolutions(
-            self, population: Population) -> str:
-        """
-        Convert solutions (list of floats) into a string for compatibility.
-        
-        :param population: Population of robots.
-        """
-        
-        for i in range(len(population.individuals)):
-            population.individuals[i].solution = json.dumps(
-                population.individuals[i].solution)
-            
-        return population
+        return (genotypes, fitnesses_total, fitnesses_forward, 
+                fitnesses_rot_l, fitnesses_rot_r, 
+                solutions_forward, solutions_rot_l, solutions_rot_r)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -476,9 +487,11 @@ class CrossoverReproducer(Reproducer):
         # Output population of children (no fitnesses/solutions yet)
         children = Population(
             individuals = [
-                Individual(genotype = g_child,
-                           fitness = None,
-                           solution = None)
+                Individual(genotype = g_child, beta = None,
+                           fitness_total = None, fitness_forward = None,
+                           fitness_rot_l = None, fitness_rot_r = None,
+                           solution_forward = None, solution_rot_l = None,
+                           solution_rot_r = None)
                 for g_child in offspring_genotypes
                 ]
             )
@@ -500,7 +513,9 @@ class CrossoverReproducer(Reproducer):
         solutions = self.findParentSolutions(parentPairs, population)
         
         for idx, sol in enumerate(solutions):
-            children.individuals[idx].solution = sol
+            children.individuals[idx].solution_forward = sol[0]
+            children.individuals[idx].solution_rot_l = sol[1]
+            children.individuals[idx].solution_rot_r = sol[2]
         
         return children
         
@@ -514,17 +529,17 @@ class CrossoverReproducer(Reproducer):
         """
         best_solutions = []
         for (p1, p2) in parentPairs:
-            if population.individuals[p1].fitness > population.individuals[p2].fitness:
+            if population.individuals[p1].fitness_total > population.individuals[p2].fitness_total:
                 idx = p1
             else: idx = p2
             
-            best_solutions.append(population.individuals[idx].solution)
+            best_solutions.append([
+                population.individuals[idx].solution_forward,
+                population.individuals[idx].solution_rot_l,
+                population.individuals[idx].solution_rot_r,
+                ])
             
-        return(best_solutions)
-    
-        
-        children = self.insertSolution(children, population, parentPairs)
-        return(children)
+        return(best_solutions) 
 
 # Database
 def save_to_db(dbengine: Engine, generation: Generation) -> None:
@@ -597,7 +612,7 @@ initial_genotypes = [
 population = Population(
     individuals=[
         Individual(genotype=genotype, fitness_total=0.0, fitness_forward=0.0,
-                   fitness_rot_l=0.0, fitness_rot_r=0.0, beta = 0.0
+                   fitness_rot_l=0.0, fitness_rot_r=0.0, beta = 0.0,
                    solution_forward=[], solution_rot_l=[], solution_rot_r=[]
                    )
         for genotype in initial_genotypes
@@ -609,6 +624,7 @@ generation = Generation(
     experiment=experiment, generation_index=0, population=population,
 )
 save_to_db(dbengine, generation)
+
 
 
 

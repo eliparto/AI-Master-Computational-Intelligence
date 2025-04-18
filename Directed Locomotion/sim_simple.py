@@ -98,7 +98,7 @@ class Robot():
         
     def plotControl(self) -> None:
         names = ["Forward", "Left", "Right"]
-        plt.plot(robot.controls)
+        plt.plot(self.controls)
         plt.title("Control signals")
         plt.legend(names)
         plt.show()

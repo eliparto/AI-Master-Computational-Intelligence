@@ -533,7 +533,7 @@ def run_experiment(dbengine: Engine) -> None:
     # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness_total=0.0, 
+            Individual(genotype=genotype, beta = 0.0, fitness_total=0.0, 
                        fitness_forward=0.0, fitness_rot_l=0.0, 
                        fitness_rot_r=0.0, solution_forward=[], 
                        solution_rot_l=[], solution_rot_r=[]
