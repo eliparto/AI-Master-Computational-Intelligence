@@ -1,4 +1,7 @@
-""" Main script for the FULL EXPERIMENTAL IMPLEMENTATION (MULTIPARAM) """
+""" Main script for the FULL EXPERIMENTAL IMPLEMENTATION (MULTIPARAM) 
+TODO:   - Add note to confirm max simulation utilization
+        - Regenerate individuals with < 2 hinges
+"""
 
 import logging
 import os

@@ -10,6 +10,10 @@ class FitnessEvaluator():
             self, states: list[ModularRobotSimulationState]) -> None:
         self.states = states # List of simulation scene objects
         
+        # Fitness weights
+        self.p_forward = 1.0
+        self.p_rotate = 1.0
+        
     def xy_displacement(self) -> float:
         """
         Calculate the distance traveled and orientation on the xy-plane by a single modular robot.
@@ -25,11 +29,12 @@ class FitnessEvaluator():
      
         # Positional displacement vector
         disp = end_pos - begin_pos
+        fit_disp = np.linalg.norm(disp)
         
         # Robot's natural orientation
         beta = np.arctan2(disp[0], disp[1])
         
-        return np.linalg.norm(disp), beta # Distance and orientation
+        return fit_disp, beta # Distance and orientation
 
     def rotation(self) -> float:
         """
@@ -37,7 +42,7 @@ class FitnessEvaluator():
         This is done by converting the orientational quaternion' k component into 
         a rotation around the yaw (z) axis for every time delta
         """
-        rot = 0.0
+        fit_rot = 0.0
         deltas_pure = []
         deltas_filtered = []
         orients = []
@@ -54,11 +59,11 @@ class FitnessEvaluator():
             deltas_pure.append(delta)
             # Low pass filter
             if abs(delta) > np.pi: delta = 0 # Prevent modulo operation from blowing up the delta
-            rot += delta
+            fit_rot += delta
             deltas_filtered.append(delta)
             orients.append(yaw_end)
         
-        return rot, deltas_pure, deltas_filtered, orients
+        return fit_rot, deltas_pure, deltas_filtered, orients
     
     def displacement(self):
         positions = np.zeros(2)

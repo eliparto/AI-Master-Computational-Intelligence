@@ -41,8 +41,12 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
         )
         genotype_id: orm.Mapped[int] = orm.mapped_column(nullable=False, init=False)
         genotype: orm.Mapped[TGenotype] = orm.relationship()
-        fitness: orm.Mapped[float] = orm.mapped_column(nullable=False)
-        solution: orm.Mapped[list[float]] = orm.mapped_column(JSON, nullable = False)
+        
+        # Added functionalities
+        beta: orm.Mapped[float] = orm.mapped_column(nullable=False)
+        fitness: orm.Mapped[float] = orm.mapped_column(nullable=False) # Total fitness
+        fitnesses: orm.Mapped[list[float]] = orm.mapped_column(JSON, nullable = False) # Vector of action fitnesses 
+        solutions: orm.Mapped[list[float]] = orm.mapped_column(JSON, nullable = False) # Flattened vector of solution vectors
 
     # ----------------------
     # Implementation details
@@ -64,16 +68,27 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
         @orm.declared_attr
         def genotype(cls) -> orm.Mapped[TGenotype]:  # noqa
             return cls.__genotype_impl()
-
+        
+        # Added calls
+        # Natural orientation beta call
+        @orm.declared_attr
+        def beta(cls) -> orm.Mapped[float]:  # noqa
+            return cls.__beta_impl()
+        
+        # Fitness value/vector calls
         @orm.declared_attr
         def fitness(cls) -> orm.Mapped[float]:  # noqa
             return cls.__fitness_impl()
 
-        # Parent solution vector in string format (cant store lists)
         @orm.declared_attr
-        def solution(cls) -> orm.Mapped[list[float]]:  # noqa
-            return cls.__solution_impl()
-
+        def fitnesses(cls) -> orm.Mapped[list[float]]:  # noqa
+            return cls.__fitnesses_impl()
+        
+        # Solution vector call
+        @orm.declared_attr
+        def solutions(cls) -> orm.Mapped[list[float]]:  # noqa
+            return cls.__solutions_impl()
+        
     __type_tgenotype: ClassVar[Type[TGenotype]]  # type: ignore[misc]
     __population_table: ClassVar[str]
 
@@ -126,10 +141,22 @@ class Individual(HasId, orm.MappedAsDataclass, Generic[TGenotype]):
     def __genotype_impl(cls) -> orm.Mapped[TGenotype]:
         return orm.relationship(cls.__type_tgenotype)
 
+    # Added functionalities
+    # Natural orientation beta
+    @classmethod
+    def __beta_impl(cls) -> orm.Mapped[float]:
+        return orm.mapped_column(nullable=False)
+    
+    # Fitnesses
     @classmethod
     def __fitness_impl(cls) -> orm.Mapped[float]:
         return orm.mapped_column(nullable=False)
-    
+
     @classmethod
-    def __solution_impl(cls) -> orm.Mapped[list[float]]:
+    def __fitnesses_impl(cls) -> orm.Mapped[list[float]]:
+        return orm.mapped_column(JSON, nullable=False)
+
+    # Solutions    
+    @classmethod
+    def __solutions_impl(cls) -> orm.Mapped[list[float]]:
         return orm.mapped_column(JSON, nullable=False)
