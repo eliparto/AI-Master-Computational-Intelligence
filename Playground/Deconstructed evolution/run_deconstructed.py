@@ -1,5 +1,6 @@
 """ Deconsturcted generational step for variable exploration 
 TODO:   - Remove unused functions (encode/decode)
+        - Plot/report fitnesses after steps to confirm learning
 """
 
 import logging
@@ -110,6 +111,7 @@ class BrainOptimizerDE(Learner):
                 population.individuals[idx].fitness_forward = 0.0
                 population.individuals[idx].fitness_rot_l = 0.0
                 population.individuals[idx].fitness_rot_r = 0.0
+                population.individuals[idx].beta = 0.0
                 
             # Sum individual's fitnesses to total fitness
             population.individuals[idx].fitness_total = (
@@ -252,7 +254,7 @@ class BrainOptimizerDE(Learner):
         return population
     
     def setSolutionSizes(
-            self, children: Population, sol_sizes = list[int]) -> Population:
+            self, children: Population, sol_sizes: list[int]) -> Population:
         """
         Reformat solution vectors to the right sizes.
 
@@ -262,28 +264,31 @@ class BrainOptimizerDE(Learner):
         # TODO: Parametrize solution vectors into matrix
         for idx, sol_size in enumerate(sol_sizes):
             if sol_size == 0: sol_size = 1 # Prevent empty list as output
-            solution_f = children.individuals[idx].solution_forward
-            solution_r_l = children.individuals[idx].solution_rot_l
-            solution_r_r = children.individuals[idx].solution_rot_r
+            solution_forward = children.individuals[idx].solution_forward
+            solution_rot_l = children.individuals[idx].solution_rot_l
+            solution_rot_r = children.individuals[idx].solution_rot_r
             
-            if len(solution_f) >= sol_size:
-                solution_f = solution_f[:sol_size]
-                solution_r_l = solution_r_l[:sol_size]
-                solution_r_r = solution_r_r[:sol_size]
-            else:
-                sample_f = np.random.uniform(
-                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
-                solution_f = np.concatenate((solution, sample)).tolist()
-                sample_r_l = np.random.uniform(
-                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
-                solution_r_l = np.concatenate((solution, sample)).tolist()
-                sample_r_r = np.random.uniform(
-                    low=-1.0, high=1.0, size = sol_size - len(solution_f))
-                solution_r_r = np.concatenate((solution, sample)).tolist()
+            if len(solution_forward) >= sol_size:
+                solution_forward = solution_forward[:sol_size]
+                solution_rot_l = solution_rot_l[:sol_size]
+                solution_rot_r = solution_rot_r[:sol_size]
                 
-            children.individuals[idx].solution_f = solution_f
-            children.individuals[idx].solution_r_l = solution_r_l
-            children.individuals[idx].solution_r_r = solution_r_r
+            else:
+                sample_forward = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_forward))
+                solution_forward = np.concatenate((solution_forward, sample_forward)).tolist()
+                
+                sample_rot_l = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_forward))
+                solution_rot_l = np.concatenate((solution_rot_l, sample_rot_l)).tolist()
+                
+                sample_rot_r = np.random.uniform(
+                    low=-1.0, high=1.0, size = sol_size - len(solution_forward))
+                solution_rot_r = np.concatenate((solution_rot_r, sample_rot_r)).tolist()
+                
+            children.individuals[idx].solution_forward = solution_forward
+            children.individuals[idx].solution_rot_l = solution_rot_l
+            children.individuals[idx].solution_rot_r = solution_rot_r
         
         return children
 
@@ -358,7 +363,7 @@ class SurvivorSelector(Selector):
         :raises ValueError: If the population is empty.
         """
         
-        offspring, o_fit_tot, o_fit_f, o_fit_r_l, o_fit_r_r, o_sol_f, o_sol_r_l, o_sol_r_r = self.setupChildren(children)
+        offspring, o_fit_tot, o_fit_f, o_fit_r_l, o_fit_r_r, o_sol_f, o_sol_r_l, o_sol_r_r, o_betas = self.setupChildren(children)
 
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
@@ -387,6 +392,7 @@ class SurvivorSelector(Selector):
                         solution_forward=population.individuals[i].solution_forward,
                         solution_rot_l=population.individuals[i].solution_rot_l,
                         solution_rot_r=population.individuals[i].solution_rot_r,
+                        beta=population.individuals[i].beta,
                     )
                     for i in original_survivors
                 ]
@@ -400,6 +406,7 @@ class SurvivorSelector(Selector):
                         solution_forward=o_sol_f[i],
                         solution_rot_l=o_sol_r_l[i],
                         solution_rot_r=o_sol_r_r[i],
+                        beta=o_betas[i],
                     )
                     for i in offspring_survivors
                 ]
@@ -423,6 +430,7 @@ class SurvivorSelector(Selector):
         solutions_forward = []
         solutions_rot_l = []
         solutions_rot_r = []
+        betas = []
         
         for child in children.individuals:
             genotypes.append(child.genotype)
@@ -433,10 +441,11 @@ class SurvivorSelector(Selector):
             solutions_forward.append(child.solution_forward)
             solutions_rot_l.append(child.solution_rot_l)
             solutions_rot_r.append(child.solution_rot_r)
+            betas.append(child.beta)
             
         return (genotypes, fitnesses_total, fitnesses_forward, 
                 fitnesses_rot_l, fitnesses_rot_r, 
-                solutions_forward, solutions_rot_l, solutions_rot_r)
+                solutions_forward, solutions_rot_l, solutions_rot_r, betas)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
