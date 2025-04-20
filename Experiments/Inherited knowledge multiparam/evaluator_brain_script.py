@@ -14,9 +14,10 @@ from revolve2.modular_robot_simulation import (
     simulate_scenes,
 )
 from revolve2.simulators.mujoco_simulator import LocalSimulator
-from revolve2.standards import fitness_functions, terrains
+from revolve2.standards import terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
 
+from revolve2.standards.fitness_functions import FitnessEvaluator
 
 class Evaluator:
     """Provides evaluation of robots."""
@@ -54,14 +55,13 @@ class Evaluator:
 
     def evaluate(
         self,
-        solutions: list[npt.NDArray[np.float_]],
+        solutions: list[npt.NDArray[np.float_]], fit_type: int
     ) -> npt.NDArray[np.float_]:
         """
         Evaluate multiple robots.
 
-        Fitness is the distance traveled on the xy plane.
-
         :param solutions: Solutions to evaluate.
+        :fit_type: Integer determining fitness type to calculate.
         :returns: Fitnesses of the solutions.
         """
         # Create robots from the brain parameters.
@@ -92,13 +92,109 @@ class Evaluator:
             scenes=scenes,
         )
 
-        # Calculate the xy displacements.
-        xy_displacements = [
-            fitness_functions.xy_displacement(
-                states[0].get_modular_robot_simulation_state(robot),
-                states[-1].get_modular_robot_simulation_state(robot),
-            )
-            for robot, states in zip(robots, scene_states)
-        ]
+        # xy_displacements = [
+        #     fitness_functions.xy_displacement(
+        #         states[0].get_modular_robot_simulation_state(robot),
+        #         states[-1].get_modular_robot_simulation_state(robot),
+        #     )
+        #     for robot, states in zip(robots, scene_states)
+        # ]
 
-        return np.array(xy_displacements)
+        fits_forward, betas = self.calcFitForward(robots, scene_states)
+        fits_rot_l = self.calcFitRotation(robots, scene_states)
+        
+        if fit_type == 0: fits = fits_forward
+        elif fit_type == 1: fits = fits_rot_l - fits_forward
+        else: fits = -fits_rot_l - fits_forward
+        
+        return fits, betas
+        # TODO: Compare xy-displacement to generated fitness array
+    
+    def calcFitForward(
+        self, robots: ModularRobot, scene_states) -> list[list[float], float]:
+        """
+        Calculate robot displacements and natural orientation angles beta.
+        :robots: Robots to be evaluated.
+        :scene_states: Simulated scened for every robot.
+        """
+        fitnesses = []
+        betas = []
+        for robot, states in zip(robots, scene_states):
+            sim_state_begin = states[0].get_modular_robot_simulation_state(robot)
+            sim_state_end = states[-1].get_modular_robot_simulation_state(robot)
+            
+            # Start and end position vectors
+            begin_pos = np.array([
+                sim_state_begin.get_pose().position.x,
+                sim_state_begin.get_pose().position.y])
+            end_pos = np.array([
+                sim_state_end.get_pose().position.x, 
+                sim_state_end.get_pose().position.y
+                ])
+         
+            # Positional displacement vector
+            disp = end_pos - begin_pos
+            fitness = np.linalg.norm(disp)
+            
+            # Robot's natural orientation
+            beta = np.arctan2(disp[0], disp[1])
+            
+            fitnesses.append(fitness)
+            betas.append(beta)
+            
+        return np.array(fitnesses), np.array(betas)
+    
+    def calcFitRotation(
+        self, robots: ModularRobot, scene_states) -> npt.NDArray[np.float_]:
+        """
+        Calculate the yaw angles (rotation around z-axis) of all robots.
+        :robots: Robots to be evaluated.
+        :scene_states: Simulated scened for every robot.
+        """
+        fitnesses = []
+        for robot, states in zip(robots, scene_states):
+            fitness = 0.0
+            for idx in range(len(states)-1):
+                # Extract simulation states at time t and (t+1)
+                sim_state_t = states[idx].get_modular_robot_simulation_state(robot)
+                sim_state_t_1 = states[idx+1].get_modular_robot_simulation_state(robot)
+                # Extract quaternions
+                quat_t = sim_state_t.get_pose().orientation
+                quat_t_1 = sim_state_t_1.get_pose().orientation
+                # Convert quaternion data to yaw angles
+                _, _, yaw_start = self.quaternion_to_euler(quat_t)
+                _, _, yaw_end = self.quaternion_to_euler(quat_t_1)
+                
+                # Calculate delta theta and pass through low-pass filter
+                delta = yaw_end - yaw_start
+                if abs(delta) > np.pi: delta = 0
+                fitness += delta
+            fitnesses.append(fitness)
+            
+        return np.array(fitnesses)
+                
+    def quaternion_to_euler(self, q) -> tuple[float]:
+        """
+        Convert quaterion data into angles about roll, pitch and yaw axes.
+        """
+        w, x, y, z = q
+        roll = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
+        pitch = np.arcsin(2*(w*y - z*x))
+        yaw = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+    
+        return roll, pitch, yaw  # Angles in radians
+        
+        
+
+
+
+
+
+
+
+
+
+
+
+
+

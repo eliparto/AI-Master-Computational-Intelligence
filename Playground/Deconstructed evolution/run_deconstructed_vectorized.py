@@ -251,7 +251,7 @@ class BrainOptimizerDE(Learner):
         """
         
         for idx, sol_size in enumerate(sol_sizes):
-            solutions = population.individuals[idx].solutions
+            solutions = children.individuals[idx].solutions
             solutions = np.reshape(solutions, (3, int(len(solutions)/3)))
             
             # If solutions are too long -> cut off unnecessary part
