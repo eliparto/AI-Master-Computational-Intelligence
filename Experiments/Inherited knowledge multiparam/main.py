@@ -62,7 +62,6 @@ class BrainOptimizerDE(Learner):
         
         :param population: Population to go through DE.
         """
-        
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
         
@@ -131,7 +130,6 @@ class BrainOptimizerDE(Learner):
                 Every m_i gets a binary crossover mask with prob_cr to mix between m_i and t_i.
         C is outputted to be compared to T. The winning genes get passed on.
         """
-        
         # Target vectors
         vectors = np.array(vectors) # Reformat
         if vectors.ndim == 1:
@@ -166,8 +164,6 @@ class BrainOptimizerDE(Learner):
         :param T: Target vectors.
         :param C: Candidate solutions.
         """
-        
-        logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
         solutions = np.vstack((T, C))
         fitnesses, betas = evaluator.evaluate(solutions, fit_type)
@@ -210,7 +206,6 @@ class BrainOptimizerDE(Learner):
         
         :param children: Population of children.
         """
-        
         bodies = [body.genotype.develop().body for body in children.individuals]
         brains = []
         sol_sizes = []
@@ -231,7 +226,6 @@ class BrainOptimizerDE(Learner):
         """
         Generate random weights for the initial population.
         """
-
         _, _, sol_sizes = self.setupLearner(population)
         
         for idx, sol_size in enumerate(sol_sizes):
@@ -239,6 +233,7 @@ class BrainOptimizerDE(Learner):
                 low=-1.0, high=1.0, size=sol_size*3)
             
         return population
+    
     
     def setSolutionSizes(
             self, children: Population, sol_sizes: list[int]) -> Population:
@@ -248,7 +243,6 @@ class BrainOptimizerDE(Learner):
         :param children: Population of children.
         :param sol_sizes: Correct sizes of the solution vectors.
         """
-        
         for idx, sol_size in enumerate(sol_sizes):
             solutions = children.individuals[idx].solutions
             solutions = np.reshape(solutions, (3, int(len(solutions)/3)))
@@ -442,7 +436,6 @@ class CrossoverReproducer(Reproducer):
         :param population: Population of parents.
         :return: The genotypes of the children.
         """
-
         # Extract population and perform crossover/mutation
         offspring_genotypes = [
             Genotype.crossover(
@@ -462,7 +455,6 @@ class CrossoverReproducer(Reproducer):
                 for g_child in offspring_genotypes
                 ]
             )
-        
         children = self.insertSolution(children, parent_population, parentPairs)
         
         return children
@@ -476,7 +468,6 @@ class CrossoverReproducer(Reproducer):
         :param population: Population of all individuals minus the children.
         :param children: Population of children.
         """
-        
         solutions = self.findParentSolutions(parentPairs, population)
         
         for idx, sol in enumerate(solutions):
@@ -508,19 +499,13 @@ def run_experiment(dbengine: Engine) -> None:
     """
     Run an experiment.
 
-    :param dbengine: An openened database with matching initialize database structure.
+    :param dbengine: An opened database with matching initialize database structure.
     :param optim_type: Specifies the learning optimizer (DE or CMA).
     """
-    logging.debug("----------------")
-    logging.debug("Start experiment")
-
-    # Set up the random number generator.
+    # Set up and create experiment instance
     rng_seed = seed_from_time()
     rng = make_rng(rng_seed)
-
-    # Create and save the experiment instance.
     experiment = Experiment(rng_seed=rng_seed)
-    logging.debug("Saving experiment configuration.")
     with Session(dbengine) as session:
         session.add(experiment)
         session.commit()
@@ -537,7 +522,6 @@ def run_experiment(dbengine: Engine) -> None:
     - crossover_reproducer: Allows us to generate offspring from parents.
     - modular_robot_evolution: The evolutionary process as a object that can be iterated.
     """
-
     learner = BrainOptimizerDE()    
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
@@ -551,9 +535,7 @@ def run_experiment(dbengine: Engine) -> None:
         reproducer=crossover_reproducer,
         learner=learner
     )
-
     # Generate the initial population's genotypes
-    logging.debug("Generating and training initial population.")
     initial_genotypes = [
         Genotype.random(
             innov_db_body=innov_db_body,
@@ -562,7 +544,6 @@ def run_experiment(dbengine: Engine) -> None:
         )
         for _ in range(config.POPULATION_SIZE_BODY)
     ]
-    
     # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
@@ -572,7 +553,6 @@ def run_experiment(dbengine: Engine) -> None:
             for genotype in initial_genotypes
             ]
         )
-    
     # Train the initial population -> Start by generating solutions (weights)
     print("Population initialized. Training...")
     population = learner.initialSolutions(population)
@@ -585,20 +565,16 @@ def run_experiment(dbengine: Engine) -> None:
     save_to_db(dbengine, generation)
 
     # Start the actual optimization process/evolutionary loop
-    # Optimize brain -> Optimize body -> LOOP
-    logging.debug("Starting evolutionary processes (brain & body).")
-
     print("Evolutionary process started.")
     print("Morphology generations:")
     for it in tqdm(range(config.NUM_GENERATIONS_BODY), leave = True,
                    position = 0):
         generation.generation_index = it
-        logging.debug(
-            f"\n\n### Morphology generation {generation.generation_index + 1} / {config.NUM_GENERATIONS_BODY} ###\n\n"
-        )
 
-        # Here we iterate the evolutionary process using the step.
+        prev_fit = [p.fitness for p in population.individuals]
         population = modular_robot_evolution.step(population)
+        curr_fit = [p.fitness for p in population.individuals]
+        consolePlot(prev_fit, curr_fit)
 
         # Make it all into a generation and save it to the database.
         generation = Generation(
@@ -613,7 +589,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Simulate evolution.")
     parser.add_argument("-r", action="store_true", help="add to remove the prior log.")
     parser.add_argument("-name", type=str, help="Specify the database filename.")
-    parser.add_argument("-log", type=int, nargs="?", default=20, help="Logging level -> 10: Debug; 20: INFO; Standard: 20")
     args = parser.parse_args()
     
     # Check if the databases folder is present
@@ -634,7 +609,7 @@ def main() -> None:
     
     """Run the program."""
     # Set up logging.
-    setup_logging(file_name=logName, level = args.log)
+    setup_logging(file_name=logName, level = 20)
     logConfig()
 
     # Open the database, only if it does not already exists.
@@ -655,7 +630,6 @@ def save_to_db(dbengine: Engine, generation: Generation) -> None:
     :param dbengine: The database engine.
     :param generation: The current generation.
     """
-    logging.debug("Saving generation.")
     with Session(dbengine, expire_on_commit=False) as session:
         session.add(generation)
         session.commit()
