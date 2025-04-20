@@ -57,10 +57,10 @@ class ModularRobotEvolution(Evolution):
         :param kwargs: Additional keyword arguments to use in the step.
         :return: The population resulting from the step
         """
-        parent_pairs, parent_pop = self._parent_selection.select(population, **kwargs)
-        children = self._reproducer.reproduce(parent_pairs, parent_pop)
+        parent_pairs = self._parent_selection.select(population, **kwargs)
+        children = self._reproducer.reproduce(parent_pairs, population)
         children = self._learner.learn(children)
-        survivors, *_ = self._survivor_selection.select(
+        survivors = self._survivor_selection.select(
             population=population,
             children=children,
         )

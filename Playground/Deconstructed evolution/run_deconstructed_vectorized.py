@@ -1,5 +1,6 @@
 """ Deconsturcted generational step for variable exploration 
 TODO:   - Remove unused functions (encode/decode)
+        - Remove 'parent_pop' from crossoverReproducer
         - Plot/report fitnesses after steps to confirm learning
         - Go over all type castings
         - Investigate how to determine total fitness -> sum/(weighted) avg etc.
@@ -304,7 +305,7 @@ class ParentSelector(Selector):
                         individual.genotype for individual in population.individuals
                     ],
                     fitnesses=[
-                        individual.fitness_total for individual in population.individuals
+                        individual.fitness for individual in population.individuals
                     ],
                     selection_function=lambda _, fitnesses: selection.tournament(
                         rng=self.rng, fitnesses=fitnesses, k=2
@@ -312,7 +313,7 @@ class ParentSelector(Selector):
                 )
                 for _ in range(self.offspring_size)
             ],
-        ), {"parent_population": population}
+        )
 
 class SurvivorSelector(Selector):
     """Selector class for survivor selection."""
@@ -329,24 +330,27 @@ class SurvivorSelector(Selector):
 
     def select(
         self, population: Population, children: Population
-    ) -> tuple[Population, dict[str, Any]]:
+    ) -> Population:
         """
         Select survivors using a tournament.
 
         :param population: The population the parents come from.
         :param children: Population of children.
-        :param kwargs: The offspring, with key 'offspring_population'.
         :returns: A newly created population.
         :raises ValueError: If the population is empty.
         """
         
-        offspring, o_fit_tot, o_fit_f, o_fit_r_l, o_fit_r_r, o_sol_f, o_sol_r_l, o_sol_r_r, o_betas = self.setupChildren(children)
-
+        # Retrieve information from children
+        (
+            offspring, off_fitness_vectors, off_fitnesses, 
+            off_betas, off_solutions
+        ) = self.setupChildren(children) # TODO: Calculate (weighted) average fitnesses
+        
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
-            old_fitnesses=[i.fitness_total for i in population.individuals],
+            old_fitnesses=[i.fitness for i in population.individuals],
             new_genotypes=offspring,
-            new_fitnesses=o_fit_tot,
+            new_fitnesses=off_fitnesses,
             selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
                 selection_size=n,
                 population=genotypes,
@@ -362,13 +366,9 @@ class SurvivorSelector(Selector):
                 individuals=[
                     Individual(
                         genotype=population.individuals[i].genotype,
-                        fitness_total=population.individuals[i].fitness_total,
-                        fitness_forward=population.individuals[i].fitness_forward,
-                        fitness_rot_l=population.individuals[i].fitness_rot_l,
-                        fitness_rot_r=population.individuals[i].fitness_rot_r,
-                        solution_forward=population.individuals[i].solution_forward,
-                        solution_rot_l=population.individuals[i].solution_rot_l,
-                        solution_rot_r=population.individuals[i].solution_rot_r,
+                        fitness=population.individuals[i].fitness,
+                        fitnesses=population.individuals[i].fitnesses,
+                        solutions=population.individuals[i].solutions,
                         beta=population.individuals[i].beta,
                     )
                     for i in original_survivors
@@ -376,19 +376,14 @@ class SurvivorSelector(Selector):
                 + [
                     Individual(
                         genotype=offspring[i],
-                        fitness_total=o_fit_tot[i],
-                        fitness_forward=o_fit_f[i],
-                        fitness_rot_l=o_fit_r_l[i],
-                        fitness_rot_r=o_fit_r_r[i],
-                        solution_forward=o_sol_f[i],
-                        solution_rot_l=o_sol_r_l[i],
-                        solution_rot_r=o_sol_r_r[i],
-                        beta=o_betas[i],
+                        fitness=off_fitnesses[i],
+                        fitnesses=off_fitness_vectors[i],
+                        solutions=off_solutions[i],
+                        beta=off_betas[i],
                     )
                     for i in offspring_survivors
                 ]
-            ),
-            {},
+            )
         )
     
     def setupChildren(
@@ -400,29 +395,19 @@ class SurvivorSelector(Selector):
         """
         
         genotypes = []
-        fitnesses_total = []
-        fitnesses_forward = []
-        fitnesses_rot_l = []
-        fitnesses_rot_r = []
-        solutions_forward = []
-        solutions_rot_l = []
-        solutions_rot_r = []
+        fitness_values = []
+        fitness_vectors = []
+        solutions = []
         betas = []
         
         for child in children.individuals:
             genotypes.append(child.genotype)
-            fitnesses_total.append(child.fitness_total)
-            fitnesses_forward.append(child.fitness_forward)
-            fitnesses_rot_l.append(child.fitness_rot_l)
-            fitnesses_rot_r.append(child.fitness_rot_r)
-            solutions_forward.append(child.solution_forward)
-            solutions_rot_l.append(child.solution_rot_l)
-            solutions_rot_r.append(child.solution_rot_r)
+            fitness_values.append(child.fitness)
+            fitness_vectors.append(child.fitnesses)
+            solutions.append(child.solutions)
             betas.append(child.beta)
             
-        return (genotypes, fitnesses_total, fitnesses_forward, 
-                fitnesses_rot_l, fitnesses_rot_r, 
-                solutions_forward, solutions_rot_l, solutions_rot_r, betas)
+        return (genotypes, fitness_vectors, fitness_values, betas, solutions)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -450,7 +435,7 @@ class CrossoverReproducer(Reproducer):
 
     def reproduce(
         self, parentPairs: list[list[int]], 
-        parent_population: dict()) -> list[Genotype]:
+        parent_population: Population) -> list[Genotype]:
         """
         Reproduce the population by crossover.
 
@@ -460,7 +445,6 @@ class CrossoverReproducer(Reproducer):
         """
 
         # Extract population and perform crossover/mutation
-        parent_population = parent_population.get("parent_population")
         offspring_genotypes = [
             Genotype.crossover(
                 parent_population.individuals[parent1_i].genotype,
@@ -473,11 +457,9 @@ class CrossoverReproducer(Reproducer):
         # Output population of children (no fitnesses/solutions yet)
         children = Population(
             individuals = [
-                Individual(genotype = g_child, beta = None,
-                           fitness_total = None, fitness_forward = None,
-                           fitness_rot_l = None, fitness_rot_r = None,
-                           solution_forward = None, solution_rot_l = None,
-                           solution_rot_r = None)
+                Individual(genotype=g_child, fitness=0.0, fitnesses=3*[0.0], 
+                           beta = 0.0, solutions=[]
+                           )
                 for g_child in offspring_genotypes
                 ]
             )
@@ -499,10 +481,8 @@ class CrossoverReproducer(Reproducer):
         solutions = self.findParentSolutions(parentPairs, population)
         
         for idx, sol in enumerate(solutions):
-            children.individuals[idx].solution_forward = sol[0]
-            children.individuals[idx].solution_rot_l = sol[1]
-            children.individuals[idx].solution_rot_r = sol[2]
-        
+            children.individuals[idx].solutions = sol
+            
         return children
         
     def findParentSolutions(
@@ -515,15 +495,11 @@ class CrossoverReproducer(Reproducer):
         """
         best_solutions = []
         for (p1, p2) in parentPairs:
-            if population.individuals[p1].fitness_total > population.individuals[p2].fitness_total:
+            if population.individuals[p1].fitness > population.individuals[p2].fitness:
                 idx = p1
             else: idx = p2
             
-            best_solutions.append([
-                population.individuals[idx].solution_forward,
-                population.individuals[idx].solution_rot_l,
-                population.individuals[idx].solution_rot_r,
-                ])
+            best_solutions.append([population.individuals[idx].solutions])
             
         return(best_solutions) 
 
@@ -597,8 +573,8 @@ initial_genotypes = [
 # Create the initial population (0 fitness and no solution)
 population = Population(
     individuals=[
-        Individual(genotype=genotype, fitness=0.0, fitnesses=[0.0, 0.0, 0.0], beta = 0.0,
-                   solutions=[]
+        Individual(genotype=genotype, fitness=0.0, fitnesses=3*[0.0], 
+                   beta = 0.0, solutions=[]
                    )
         for genotype in initial_genotypes
         ]

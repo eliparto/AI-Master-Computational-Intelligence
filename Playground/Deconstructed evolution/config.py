@@ -5,8 +5,8 @@ Configuration parameters
 # Body
 DATABASE_FILE = "database.sqlite"
 NUM_REPETITIONS_BODY = 1 # No. of repetitions of the morphology optimization process
-POPULATION_SIZE_BODY = 4
-OFFSPRING_SIZE = 2
+POPULATION_SIZE_BODY = 6
+OFFSPRING_SIZE = 3
 NUM_GENERATIONS_BODY = 1 # No. of body optimization generations
 
 # Differential Evolution parameters
