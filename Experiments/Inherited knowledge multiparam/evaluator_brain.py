@@ -46,7 +46,7 @@ class Evaluator:
         :param output_mapping: A mapping between active hinges and the index of their corresponding cpg in the cpg network structure.
         """
         self._simulator = LocalSimulator(
-            headless=headless, num_simulators=num_simulators
+            viewer_type = "native", headless=headless, num_simulators=num_simulators
         )
         self._terrain = terrains.flat()
         self._cpg_network_structure = cpg_network_structure

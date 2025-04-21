@@ -1,4 +1,7 @@
-"""Plot fitness over generations for all experiments, averaged."""
+"""Plot fitness over generations for all experiments, averaged
+Decompose fitness vectors w/:
+df[["fitness_forward", "fitness_rot_left", "fitness_rot_right"]] = pd.Dataframe(df["fitnesses"].tolist(), index = df.index)
+"""
 
 import config
 import matplotlib.pyplot as plt
