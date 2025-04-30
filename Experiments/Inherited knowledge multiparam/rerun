@@ -2,7 +2,6 @@
 
 import logging
 import numpy as np
-from matplotlib import pyplot as plt
 import time
 
 from database_components import Genotype, Individual
@@ -31,7 +30,7 @@ def main() -> None:
     
     if args.name:
         # Database name
-        db_name = "Databases/" + args.name + ".sqlite"
+        db_name = "Databases/" + args.name
         
         # Load the best individual from the database.
         dbengine = open_database_sqlite(
@@ -68,7 +67,7 @@ def main() -> None:
         # Setup the evaluator
         evaluator = Evaluator(
         headless=False,
-        num_simulators=1,
+        num_simulators=config.NUM_SIMULATORS_BRAIN,
         cpg_network_structure=cpg_network_structure,
         body=body,
         output_mapping=output_mapping,
@@ -79,9 +78,8 @@ def main() -> None:
         for i in range(3):
             print(f"Motion: {motions[i]}")
             print(f"{motions[i]} fitness: {round(fitnesses[i], 4)}")
-            evaluator.evaluate([solutions[i]], 0)
+            evaluator.evaluate(solutions[i], 0)
             time.sleep(2)
-        
         
     else: print("Pass database name with '-name'. Closing now.")
     

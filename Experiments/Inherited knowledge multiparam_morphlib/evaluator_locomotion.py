@@ -46,7 +46,7 @@ class Evaluator:
         :param output_mapping: A mapping between active hinges and the index of their corresponding cpg in the cpg network structure.
         """
         self._simulator = LocalSimulator(
-            viewer_type = "native", headless=headless, num_simulators=num_simulators
+            viewer_type="native", headless=headless, num_simulators=num_simulators
         )
         self._terrain = terrains.flat()
         self._cpg_network_structure = cpg_network_structure
@@ -86,19 +86,21 @@ class Evaluator:
             scenes.append(scene)
 
         # Simulate all scenes.
+        batch_parameters=make_standard_batch_parameters()
+        batch_parameters.simulation_time = None
         scene_states = simulate_scenes(
             simulator=self._simulator,
-            batch_parameters=make_standard_batch_parameters(),
+            batch_parameters=batch_parameters,
             scenes=scenes,
         )
 
-        xy_displacements = [
-            fitness_functions.xy_displacement(
-                states[0].get_modular_robot_simulation_state(robot),
-                states[-1].get_modular_robot_simulation_state(robot),
-            )
-            for robot, states in zip(robots, scene_states)
-        ]
+        # xy_displacements = [
+        #     fitness_functions.xy_displacement(
+        #         states[0].get_modular_robot_simulation_state(robot),
+        #         states[-1].get_modular_robot_simulation_state(robot),
+        #     )
+        #     for robot, states in zip(robots, scene_states)
+        # ]
 
         fits_forward, betas = self.calcFitForward(robots, scene_states)
         fits_rot_l = self.calcFitRotation(robots, scene_states)
