@@ -93,7 +93,8 @@ class Evaluator:
             batch_parameters=batch_parameters,
             scenes=scenes,
         )
-
+        
+        # TODO: comment out!
         # xy_displacements = [
         #     fitness_functions.xy_displacement(
         #         states[0].get_modular_robot_simulation_state(robot),

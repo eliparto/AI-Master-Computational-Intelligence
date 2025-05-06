@@ -4,6 +4,7 @@ TODO:   - Add note to confirm max simulation utilization
         - Plot previous vs current generation statistics
         - Remove logging
         - Fix type casting
+        - Clip rotation fitness to steer learning towards moving forward/reduce training time
 """
 
 import logging
@@ -88,9 +89,6 @@ class BrainOptimizerDE(Learner):
                 
                 # Optimize the 3 movement types
                 for i in tqdm(range(3), leave = False, position = 2):
-                    print()
-                    print(solutions[i])
-                    print()
                     sol_t, sol_c = self.generate_T_C(solutions[i])
                     for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN-1),
                                     leave = False, position = 3):
@@ -267,6 +265,14 @@ class BrainOptimizerDE(Learner):
             children.individuals[idx].solutions = solutions.flatten('C').tolist()
         
         return children
+
+# Targeted Locomotion trainer
+class TL_Learner(Learner):
+    def __init__(self) -> None:
+        self
+        
+    def train(self, population: Population) -> Population:
+        pass
 
 # Morphology optimization
 class ParentSelector(Selector):

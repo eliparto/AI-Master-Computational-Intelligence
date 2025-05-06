@@ -92,13 +92,13 @@ class Evaluator:
             scenes=scenes,
         )
 
-        xy_displacements = [
-            fitness_functions.xy_displacement(
-                states[0].get_modular_robot_simulation_state(robot),
-                states[-1].get_modular_robot_simulation_state(robot),
-            )
-            for robot, states in zip(robots, scene_states)
-        ]
+        # xy_displacements = [
+        #     fitness_functions.xy_displacement(
+        #         states[0].get_modular_robot_simulation_state(robot),
+        #         states[-1].get_modular_robot_simulation_state(robot),
+        #     )
+        #     for robot, states in zip(robots, scene_states)
+        # ]
 
         fits_forward, betas = self.calcFitForward(robots, scene_states)
         fits_rot_l = self.calcFitRotation(robots, scene_states)
@@ -131,6 +131,9 @@ class Evaluator:
                 sim_state_end.get_pose().position.x, 
                 sim_state_end.get_pose().position.y
                 ])
+            
+            print("\nDisplacement calculation:")
+            print(end_pos)
          
             # Positional displacement vector
             disp = end_pos - begin_pos
