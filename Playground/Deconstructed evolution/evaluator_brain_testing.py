@@ -55,7 +55,7 @@ class Evaluator:
 
     def evaluate(
         self,
-        solutions: list[npt.NDArray[np.float_]], fit_type: int
+        solutions: list[npt.NDArray[np.float_]],
     ) -> npt.NDArray[np.float_]:
         """
         Evaluate multiple robots.
@@ -107,9 +107,7 @@ class Evaluator:
         fits_forward, betas = self.calcFitForward(robots, scene_states)
         fits_rot_l = self.calcFitRotation(robots, scene_states)
         
-        if fit_type == 0: fits = fits_forward
-        elif fit_type == 1: fits = fits_rot_l - fits_forward
-        else: fits = -fits_rot_l - fits_forward
+        fits = fits_forward
         
         return fits, betas
         # TODO: Compare xy-displacement to generated fitness array

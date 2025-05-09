@@ -29,6 +29,7 @@ from database_components import (
     Population,
 )
 from evaluator_brain_script import Evaluator as Evaluator_brain
+from evaluator_brain_testing import Evaluator as Evaluator_beta
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,14 @@ from revolve2.experimentation.evolution.abstract_elements import Reproducer, Sel
 from revolve2.experimentation.logging import setup_logging
 from revolve2.experimentation.optimization.ea import population_management, selection
 from revolve2.experimentation.rng import make_rng, seed_from_time
+
+# Body analyzer
+class BodyCheck():
+    """
+    Infer information from the robot's body, such as its 'nose', overall shape, etc.
+    """
+    
+    
 
 # Brain optimizer
 class BrainOptimizerDE(Learner):
@@ -75,55 +84,41 @@ class BrainOptimizerDE(Learner):
             
             # Only optimize robots with at least 2 joints
             if cpg_network_structure.num_connections > 0:
-                evaluator = Evaluator_brain(
+                evaluator = Evaluator_beta(
                 headless=True,
                 num_simulators=config.NUM_SIMULATORS_BRAIN,
                 cpg_network_structure=cpg_network_structure,
                 body=body,
                 output_mapping=output_mapping,
+                targets=targets,
                 )
                 
-                # Sample target and candidate solutions
                 solutions = population.individuals[idx].solutions
-                solutions = np.reshape(
-                    np.array(solutions), (3, int(len(solutions)/3)))
+                sol_t, sol_c = self.generate_T_C(solutions)
                 
-                # Optimize the 3 movement types
-                for i in tqdm(range(3), leave = False, position = 1):
-                    sol_t, sol_c = self.generate_T_C(solutions[i])
-                    for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN-1),
-                                    leave = False, position = 2):
-                        targets, _, _ = self.optimize(sol_t, sol_c, i, evaluator)
-                        sol_t, sol_c = self.generate_T_C(targets)
+                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
+                                leave = False):
+                    targets, max_fit, _ = self.optimize(sol_t, sol_c, evaluator)
+                    sol_t, sol_c = self.generate_T_C(targets)
                     
-                    # Update fitness, beta, and solutions
-                    targets, max_fit, beta = self.optimize(sol_t, sol_c, i,
-                                                               evaluator)
-                    solutions[i] = targets[0]
-                    population.individuals[idx].fitnesses[i] = max_fit
-                    if i == 0: population.individuals[idx].beta = beta
-                    
-                population.individuals[idx].solutions = solutions.flatten('C').tolist()
-                population.individuals[idx].fitness = np.average(
-                    population.individuals[idx].fitnesses)
+                # Update fitness and solution
+                population.individuals[idx].solutions = targets[0].flatten('C').tolist()
+                population.individuals[idx].fitness = max_fit
  
             # TODO: De something when no. of hinges is not enough to optimize
             else:
-                population.individuals[idx].solutions = [0.0]*3
-                population.individuals[idx].beta = 0.0
-                population.individuals[idx].fitnesses = [0.0]*3
-                population.individuals[idx].fitness = 0.0
+                population.individuals[idx].fitness = -1000
                 
         return population
     
     def generate_T_C(
-            self, vectors):
+            self, T):
         """
         Generates target and candidate vectors for Differential Evolution).
         
-        :param vectors: Cadidate solution(s) to go through DE. Can be 1D list or 2D array.
+        :param vectors: Cadidate solution(s) to go through DE. Can be 2D matrix or 3D tensor.
         
-        T ->    Target vectors:
+        T ->    Target vectors (can also be initial solution):
                 Add perturbation vectors P to copies of the input vector.
                 T = T + P w/ P ~ N(o, sd)
         M ->    Mutation vectors:
@@ -133,28 +128,26 @@ class BrainOptimizerDE(Learner):
         C is outputted to be compared to T. The winning genes get passed on.
         """
         
-        # Target vectors
-        vectors = np.array(vectors) # Reformat
-        if vectors.ndim == 1:
-            T = np.reshape(np.repeat(
-                vectors, config.NUM_POPULATION_BRAIN),
-                (len(vectors), config.NUM_POPULATION_BRAIN)
-                ).T
-        else: T = vectors
-
-        # Perturb the target vectors with perturbation vectors P
-        P = np.random.normal(0, np.std(T) / config.PERTURB_SD_MOD, size = T.shape)
-        T += P
-        
-        # Mutation
+        # Create slightly perturbed population tensor of target matrices for the initial solution
+        if T.ndim == 1:
+            T = np.stack([
+                np.reshape(T, (3,int(len(T)/3)))
+                ]*config.NUM_POPULATION_BRAIN
+                )
+            P_pop = np.random.normal(loc=0.0, scale=0.05, size=T.shape)
+            T += P_pop
+            
+        # Create tensor of perturbation matrices
         m_1, m_2, m_3 = self.mutationIndices(len(T))
         M = T[m_1] + config.F * (T[m_2] - T[m_3])
            
-        # Crossover (use binary mask to decide if T or C is used)
+        # Crossover (use binary mask to decide if T or C is used) and clip
         cr_mask = np.random.choice(
             [0,1], size = T.shape, p = [1 - config.P_CR, config.P_CR]
             )
         C = np.where(cr_mask == 1, M, T)
+        C = np.clip(C, a_min=-1.0, a_max=1.0)
+        T = np.clip(T, a_min=-1.0, a_max=1.0)
         
         return T, C
     
@@ -167,6 +160,7 @@ class BrainOptimizerDE(Learner):
         :param T: Target vectors.
         :param C: Candidate solutions.
         """
+        # TODO: Remove 'betas'
         
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
@@ -579,6 +573,9 @@ population = Population(
         for genotype in initial_genotypes
         ]
     )
+
+# Dummy target for locomotion
+targets = [[10.0, 5.0]]
 
 # Finish the zeroth generation and save it to the database.
 generation = Generation(

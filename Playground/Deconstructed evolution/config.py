@@ -16,4 +16,4 @@ NUM_POPULATION_BRAIN = 5
 PERTURB_SD_MOD = 2
 P_CR = 0.7 # [0,1]
 P_MU = 0.5 # [0,1]
-F = 1.25 # [0,2]
+F = 1.5 # [0,2]
