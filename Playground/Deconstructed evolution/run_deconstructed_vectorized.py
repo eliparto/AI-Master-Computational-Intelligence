@@ -34,7 +34,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from revolve2.modular_robot import ModularRobot
-from revolve2.modular_robot.body.base import ActiveHinge
+from revolve2.modular_robot.body.base import ActiveHinge, Brick, Core, Body
 from revolve2.modular_robot.brain.cpg import (
     active_hinges_to_cpg_network_structure_neighbor,
 )
@@ -46,13 +46,161 @@ from revolve2.experimentation.logging import setup_logging
 from revolve2.experimentation.optimization.ea import population_management, selection
 from revolve2.experimentation.rng import make_rng, seed_from_time
 
+from revolve2.standards.morphological_measures import MorphologicalMeasures
+
+from revolve2.standards import planar_robot_representation as vis
+
 # Body analyzer
 class BodyCheck():
     """
     Infer information from the robot's body, such as its 'nose', overall shape, etc.
     """
+    def __init__(self, population: Population, bodyFunc) -> None:
+        self.findBodies = bodyFunc # Function to return bodies in population
+        self.bodies, self.bodies_modules, self.sol_sizes = self.findAllModules(population) 
+     
+    def findAllModules(self, population: Population):
+        """
+        Find all modules per robot in the population.
+        """
+        
+        bodies, _, sol_sizes = self.findBodies(population)
+        bodies_modules = [
+            self.findModules(body) for body in bodies
+            ]
+        
+        return bodies, bodies_modules, sol_sizes
+        
+    def findModules(self, body: Body):
+        """
+        Find all modules for a single robot.
+        """
+        return body.find_modules_of_type(Core) + \
+            body.find_modules_of_type(ActiveHinge) + \
+                body.find_modules_of_type(Brick)
+                
+    def findModulesSep(self, body: Body):
+        """
+        Find all different types of modules for a single robot.
+        """
+        modules = [
+            body.find_modules_of_type(Core),
+            body.find_modules_of_type(ActiveHinge),
+            body.find_modules_of_type(Brick),
+            ]
+        
+        coords = [
+            np.array([
+                np.array(body.grid_position(mod)) for mod in modules[0]
+                ]).astype(int),
+            np.array([
+                np.array(body.grid_position(mod)) for mod in modules[1]
+                ]).astype(int),
+            np.array([
+                np.array(body.grid_position(mod)) for mod in modules[2]
+                ]).astype(int),
+            ]
+        
+        return coords
     
+    def gridBodies(self):
+        """
+        Return all body grids in a population
+        """       
+        return [
+            self.gridBody(body, mods) for (body, mods) in zip(
+                self.bodies, self.bodies_modules)
+            ]
     
+    def gridBody(self, body, modules):
+        """
+        Generate a bounding box for a robot body.
+        
+        :param modules: List of modules in a robot.
+        """
+        coords = np.array([
+            np.array(body.grid_position(m)) for m in modules
+            ]).astype(int)
+        
+        grid = np.zeros([40,40])
+        for c in coords[:,:2]:
+            c += np.array([20,20])
+            grid[c[0],c[1]] += 1
+        
+        return grid
+    
+    def plot2D(self):
+        grids = self.gridBodies()
+        
+        for idx, grid in enumerate(grids):
+            plt.imshow(grid)
+            plt.title(f"Body no. {idx}")
+            plt.xlabel("X")
+            plt.ylabel("Y")
+            plt.colorbar()
+            plt.show()
+    
+    def plot3D(self):
+        colors = ["y", "r", "b"]
+        legend = ["Core", "Hinge", "Brick"]
+        
+        allCoords = [
+            self.findModulesSep(body) for body in bodies
+            ]
+        
+        for idx, coords in enumerate(allCoords):
+            fig = plt.figure()
+            ax = fig.add_subplot(projection="3d")
+            for c_idx, c in enumerate(coords):
+                print(c)
+                x = c[:,0]
+                y = c[:,1]
+                z = c[:,2]
+                ax.scatter(x,y,z,c=colors[c_idx])
+        
+            ax.set_title(f"Body no. {idx}")
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.legend(legend)
+            plt.show()
+        
+        
+        # for idx, coords in enumerate(allCoords):
+        #     fig = plt.figure()
+        #     ax = fig.add_subplot(projection='3d')
+        #     for c_idx, c in enumerate(coords):
+        #         x = c[:,0]
+        #         y = c[:,1]
+        #         z = c[:,2]
+        #         ax.scatter(x,y,z,c=colors[c_idx])
+
+        #     ax.set_title(f"Body no. {idx}")
+        #     ax.set_xlabel('X')
+        #     ax.set_ylabel('Y')
+        #     ax.set_zlabel('Z')
+        #     plt.show()
+        
+    def plotBBox(self):
+        pass
+            
+    def noseLoc(self, body: ModularRobot) -> int:
+        """
+        Return an integer denoting the nose's direction:
+                ^ (0)
+          (3) < + > (1)
+                ⌄ (2)
+        """
+        grid, _ = body.to_grid()
+        w, d, _ = grid.shape
+        print(w,d)
+        
+        if w != d:
+            if w > d: nose = np.random.choice([0,2])
+            else: nose = np.random.choice([1,3])
+        else: nose = np.random.randint(4) # Square grid -> random orientation
+        
+        return nose
 
 # Brain optimizer
 class BrainOptimizerDE(Learner):
@@ -62,7 +210,8 @@ class BrainOptimizerDE(Learner):
         self
         
     def learn(
-            self, population: Population, **kwargs: Any) -> Population:
+            self, population: Population,  
+            targets = list[list[float]], **kwargs: Any,) -> Population:
         """
         Generate individual robots from the population and optimize their weights.
         This process optimizes weights for 1). XY displacement; 2/3). Rotating left/right.
@@ -567,12 +716,13 @@ initial_genotypes = [
 # Create the initial population (0 fitness and no solution)
 population = Population(
     individuals=[
-        Individual(genotype=genotype, fitness=0.0, fitnesses=3*[0.0], 
-                   beta = 0.0, solutions=[]
+        Individual(genotype=genotype, fitness=0.0, nose = -1, solutions=[]
                    )
         for genotype in initial_genotypes
         ]
     )
+
+body_check = BodyCheck(population, learner.setupLearner)
 
 # Dummy target for locomotion
 targets = [[10.0, 5.0]]
