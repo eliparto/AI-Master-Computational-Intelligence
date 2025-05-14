@@ -34,6 +34,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from revolve2.modular_robot import ModularRobot
+from revolve2.modular_robot.body import Module
+
 from revolve2.modular_robot.body.base import ActiveHinge, Brick, Core, Body
 from revolve2.modular_robot.brain.cpg import (
     active_hinges_to_cpg_network_structure_neighbor,
@@ -56,43 +58,32 @@ class BodyCheck():
     Infer information from the robot's body, such as its 'nose', overall shape, etc.
     """
     def __init__(self, population: Population, bodyFunc) -> None:
-        self.findBodies = bodyFunc # Function to return bodies in population
-        self.bodies, self.bodies_modules, self.sol_sizes = self.findAllModules(population) 
+        self.bodies, _, self.sol_sizes = bodyFunc(population)
         
         # Plotting variables
-        self.colors = ["y", "r", "b"]
-        self.legend = ["Core", "Hinge", "Brick"]
-        self.marker = ["o", "^", "s"]
-        self.sizes = [50, 20, 20]
-     
-    def findAllModules(self, population: Population):
-        """
-        Find all modules per robot in the population.
-        """
+        self.colors = ["b", "r", "y"]
+        self.legend = ["Brick", "Hinge", "Core"]
+        self.marker = ["s", "^", "o"]
+        self.sizes = [20, 20, 50]
         
-        bodies, _, sol_sizes = self.findBodies(population)
-        bodies_modules = [
-            self.findModules(body) for body in bodies
-            ]
-        
-        return bodies, bodies_modules, sol_sizes
-        
-    def findModules(self, body: Body):
+    def findModules(self, body: Body) -> list[Module]:
         """
         Find all modules for a single robot.
         """
-        return body.find_modules_of_type(Core) + \
+        return body.find_modules_of_type(Brick) + \
             body.find_modules_of_type(ActiveHinge) + \
-                body.find_modules_of_type(Brick)
+                body.find_modules_of_type(Core)
                 
-    def findModulesSep(self, body: Body):
+    def findModulesSep(
+            self, body: Body
+            ) -> list[list[Brick], list[ActiveHinge], list[Core]]:
         """
         Find all different types of modules for a single robot.
         """
         modules = [
-            body.find_modules_of_type(Core),
-            body.find_modules_of_type(ActiveHinge),
             body.find_modules_of_type(Brick),
+            body.find_modules_of_type(ActiveHinge),
+            body.find_modules_of_type(Core),
             ]
         
         coords = [
@@ -108,15 +99,6 @@ class BodyCheck():
             ]
         
         return coords
-    
-    def gridBodies(self):
-        """
-        Return all body grids in a population
-        """       
-        return [
-            self.gridBody(body, mods) for (body, mods) in zip(
-                self.bodies, self.bodies_modules)
-            ]
     
     def gridBody(self, body, modules):
         """
@@ -135,38 +117,57 @@ class BodyCheck():
         
         return grid
     
-    def plot2D(self, body, idx):
+    def plot2D(self, body, idx, plt_out=False, ax=None):
+        if not ax:
+            fig = plt.figure()
+            ax = fig.add_subplot()
+            ax.set_title(f"Body no. {idx}")
+            
         modules = self.findModules(body)
         grid = self.gridBody(body, modules)
-        plt.imshow(grid)
-        plt.title(f"Body no. {idx}")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.colorbar()
-        plt.show()
+        ax.imshow(grid)
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        if plt_out: plt.show()
         
-    def plot3D(self, body, idx):
-        fig = plt.figure()
-        ax =fig.add_subplot(projection="3d")
-        colors = ["y", "r", "b"]
-        legend = ["Core", "Hinge", "Brick"]
-        marker = ["o", "^", "s"]
-        sizes = [50, 20, 20]
-        
+    def plot3D(self, body, idx, plt_out=False, ax=None):
+        if not ax:
+            fig = plt.figure()
+            ax = fig.add_subplot(projection="3d")
+            ax.set_title(f"Body no. {idx}")
+            
         allCoords = self.findModulesSep(body)
         for c_idx, coords in enumerate(allCoords):
+            if len(coords) == 0: continue # No modules of certain type present
+            
             x = coords[:,0]
             y = coords[:,1]
             z = coords[:,2]
-            ax.scatter(x,y,z, color=colors[c_idx], marker=marker[c_idx], 
-                       label=legend[c_idx], s=sizes[c_idx])
+            ax.scatter(x,y,z, color=self.colors[c_idx], 
+                       marker=self.marker[c_idx], label=self.legend[c_idx],
+                       s=self.sizes[c_idx])
             
-        ax.set_title(f"Body no. {idx}")
+        #ax.set_title(f"Body no. {idx}")
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        ax.legend(legend)
-        plt.show()               
+        ax.legend()
+        if plt_out: plt.show()      
+
+    def plotFigs(self, body, idx):
+        fig = plt.figure()
+        fig.tight_layout()
+        subfigs = fig.subfigures(1,2)
+
+        ax1 = subfigs[0].add_subplot()
+        ax2 = subfigs[1].add_subplot(projection="3d")        
+        self.plot2D(body, idx, plt_out=False, ax=ax1)
+        self.plot3D(body, idx, plt_out=False, ax=ax2)
+        fig.suptitle(f"Body no. {idx}\nNo. of connections: {self.sol_sizes[idx]}")
+        
+    def plotPop(self):
+        for idx, body in enumerate(self.bodies):
+            self.plotFigs(body, idx)
       
     def noseLoc(self, body: ModularRobot) -> int:
         """
