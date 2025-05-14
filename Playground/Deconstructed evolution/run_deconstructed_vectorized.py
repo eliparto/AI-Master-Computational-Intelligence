@@ -58,6 +58,12 @@ class BodyCheck():
     def __init__(self, population: Population, bodyFunc) -> None:
         self.findBodies = bodyFunc # Function to return bodies in population
         self.bodies, self.bodies_modules, self.sol_sizes = self.findAllModules(population) 
+        
+        # Plotting variables
+        self.colors = ["y", "r", "b"]
+        self.legend = ["Core", "Hinge", "Brick"]
+        self.marker = ["o", "^", "s"]
+        self.sizes = [50, 20, 20]
      
     def findAllModules(self, population: Population):
         """
@@ -129,61 +135,39 @@ class BodyCheck():
         
         return grid
     
-    def plot2D(self):
-        grids = self.gridBodies()
+    def plot2D(self, body, idx):
+        modules = self.findModules(body)
+        grid = self.gridBody(body, modules)
+        plt.imshow(grid)
+        plt.title(f"Body no. {idx}")
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.colorbar()
+        plt.show()
         
-        for idx, grid in enumerate(grids):
-            plt.imshow(grid)
-            plt.title(f"Body no. {idx}")
-            plt.xlabel("X")
-            plt.ylabel("Y")
-            plt.colorbar()
-            plt.show()
-    
-    def plot3D(self):
+    def plot3D(self, body, idx):
+        fig = plt.figure()
+        ax =fig.add_subplot(projection="3d")
         colors = ["y", "r", "b"]
         legend = ["Core", "Hinge", "Brick"]
+        marker = ["o", "^", "s"]
+        sizes = [50, 20, 20]
         
-        allCoords = [
-            self.findModulesSep(body) for body in bodies
-            ]
-        
-        for idx, coords in enumerate(allCoords):
-            fig = plt.figure()
-            ax = fig.add_subplot(projection="3d")
-            for c_idx, c in enumerate(coords):
-                print(c)
-                x = c[:,0]
-                y = c[:,1]
-                z = c[:,2]
-                ax.scatter(x,y,z,c=colors[c_idx])
-        
-            ax.set_title(f"Body no. {idx}")
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.legend(legend)
-            plt.show()
-        
-        
-        # for idx, coords in enumerate(allCoords):
-        #     fig = plt.figure()
-        #     ax = fig.add_subplot(projection='3d')
-        #     for c_idx, c in enumerate(coords):
-        #         x = c[:,0]
-        #         y = c[:,1]
-        #         z = c[:,2]
-        #         ax.scatter(x,y,z,c=colors[c_idx])
-
-        #     ax.set_title(f"Body no. {idx}")
-        #     ax.set_xlabel('X')
-        #     ax.set_ylabel('Y')
-        #     ax.set_zlabel('Z')
-        #     plt.show()
-        
-    def plotBBox(self):
-        pass
+        allCoords = self.findModulesSep(body)
+        for c_idx, coords in enumerate(allCoords):
+            x = coords[:,0]
+            y = coords[:,1]
+            z = coords[:,2]
+            ax.scatter(x,y,z, color=colors[c_idx], marker=marker[c_idx], 
+                       label=legend[c_idx], s=sizes[c_idx])
             
+        ax.set_title(f"Body no. {idx}")
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend(legend)
+        plt.show()               
+      
     def noseLoc(self, body: ModularRobot) -> int:
         """
         Return an integer denoting the nose's direction:
