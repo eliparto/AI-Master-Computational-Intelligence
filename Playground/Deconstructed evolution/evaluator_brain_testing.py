@@ -35,6 +35,8 @@ class Evaluator:
         cpg_network_structure: CpgNetworkStructure,
         body: Body,
         output_mapping: list[tuple[int, ActiveHinge]],
+        nose: int,
+        targets: list[list[float]],
     ) -> None:
         """
         Initialize this object.
@@ -52,6 +54,8 @@ class Evaluator:
         self._cpg_network_structure = cpg_network_structure
         self._body = body
         self._output_mapping = output_mapping
+        self._nose=nose,
+        self._targets=targets
 
     def evaluate(
         self,
@@ -72,11 +76,13 @@ class Evaluator:
         robots = [
             ModularRobot(
                 body=self._body,
-                brain=BrainCpgNetworkStatic.uniform_from_params(
+                brain=BrainCpgNetworkLocomotion.uniform_from_params(
                     params=params,
                     cpg_network_structure=self._cpg_network_structure,
                     initial_state_uniform=math.sqrt(2) * 0.5,
                     output_mapping=self._output_mapping,
+                    nose=self._nose,
+                    targets=self._targets,
                 ),
             )
             for params in solutions
@@ -97,30 +103,26 @@ class Evaluator:
         )
 
         # xy_displacements = [
-        #     fitness_functions.xy_displacement(
+        #     fitness_functisions.xy_displacement(
         #         states[0].get_modular_robot_simulation_state(robot),
         #         states[-1].get_modular_robot_simulation_state(robot),
         #     )
         #     for robot, states in zip(robots, scene_states)
         # ]
 
-        fits_forward, betas = self.calcFitForward(robots, scene_states)
-        fits_rot_l = self.calcFitRotation(robots, scene_states)
+        fitness = self.fitness_displacement(robots, scene_states)
         
-        fits = fits_forward
-        
-        return fits, betas
+        return fitness
         # TODO: Compare xy-displacement to generated fitness array
     
-    def calcFitForward(
+    def fitness_displacement(
         self, robots: ModularRobot, scene_states) -> list[list[float], float]:
         """
-        Calculate robot displacements and natural orientation angles beta.
+        Calculate robot displacements.
         :robots: Robots to be evaluated.
         :scene_states: Simulated scened for every robot.
         """
         fitnesses = []
-        betas = []
         for robot, states in zip(robots, scene_states):
             sim_state_begin = states[0].get_modular_robot_simulation_state(robot)
             sim_state_end = states[-1].get_modular_robot_simulation_state(robot)
@@ -133,21 +135,14 @@ class Evaluator:
                 sim_state_end.get_pose().position.x, 
                 sim_state_end.get_pose().position.y
                 ])
-            
-            print("\nDisplacement calculation:")
-            print(end_pos)
+
          
             # Positional displacement vector
             disp = end_pos - begin_pos
             fitness = np.linalg.norm(disp)
-            
-            # Robot's natural orientation
-            beta = np.arctan2(disp[0], disp[1])
-            
             fitnesses.append(fitness)
-            betas.append(beta)
-            
-        return np.array(fitnesses), np.array(betas)
+
+        return np.array(fitnesses)
     
     def calcFitRotation(
         self, robots: ModularRobot, scene_states) -> npt.NDArray[np.float_]:

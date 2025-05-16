@@ -1,4 +1,6 @@
-""" Morphology Analysis """
+""" Morphology Analysis 
+TODO: - Remove self.population and self.bodies -> Make seperately callable
+"""
 
 import numpy as np
 import numpy.typing as npt
@@ -21,6 +23,7 @@ class BodyCheck():
     """
     def __init__(self, population: Population, bodyFunc) -> None:
         self.bodies, _, self.sol_sizes = bodyFunc(population)
+        self.population = population # Temporary
         
         # Plotting variables
         self.colors = ["b", "r", "y"]
@@ -90,8 +93,8 @@ class BodyCheck():
         modules = self.findModules(body)
         grid = self.gridBody(body, modules)
         ax.imshow(grid)
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
+        ax.set_xlabel("Y")
+        ax.set_ylabel("X")
         if plt_out: plt.show()
         
     def plot3D(self, body, idx, plt_out=False, ax=None):
@@ -127,7 +130,8 @@ class BodyCheck():
         ax2 = subfigs[1].add_subplot(projection="3d")        
         self.plot2D(body, idx, plt_out=False, ax=ax1)
         self.plot3D(body, idx, plt_out=False, ax=ax2)
-        fig.suptitle(f"Body no. {idx}\nNo. of connections: {self.sol_sizes[idx]}")
+        nose = self.population.individuals[idx].nose
+        fig.suptitle(f"Body no. {idx}\nNo. of connections: {self.sol_sizes[idx]}\nNose orientation: {nose}")
         
     def plotPop(self):
         for idx, body in enumerate(self.bodies):
@@ -150,6 +154,8 @@ class BodyCheck():
             
             population.individuals[idx].nose = self.noseLoc(
                 min_x, max_x, min_y, max_y, width, depth)
+            
+        return population
     
     def noseLoc(self, min_x, max_x, min_y, max_y, w, d) -> int:
         """

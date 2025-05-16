@@ -47,6 +47,18 @@ from revolve2.experimentation.evolution.abstract_elements import Reproducer, Sel
 from revolve2.experimentation.optimization.ea import population_management, selection
 from revolve2.experimentation.rng import make_rng, seed_from_time
 
+from revolve2.modular_robot import ModularRobot
+from revolve2.modular_robot.body.base import ActiveHinge, Body
+from revolve2.modular_robot.brain.cpg import BrainCpgNetworkStatic, BrainCpgNetworkLocomotion, CpgNetworkStructure
+from revolve2.modular_robot_simulation import (
+    ModularRobotScene,
+    Terrain,
+    simulate_scenes,
+)
+from revolve2.simulators.mujoco_simulator import LocalSimulator
+from revolve2.standards import terrains
+from revolve2.standards.simulation_parameters import make_standard_batch_parameters
+
 from BodyCheck import BodyCheck
 # TODO: Check compatability
 #from BrainOptimizer import BrainOptimizerDE
@@ -80,9 +92,13 @@ class BrainOptimizerDE(Learner):
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
             cpg_network_structure, output_mapping = brains[idx]
+            targets = [[3,4]]
             
             # Only optimize robots with at least 2 joints
             if cpg_network_structure.num_connections > 0:
+                solutions = population.individuals[idx].solutions
+                nose = population.individuals[idx].nose
+                
                 evaluator = Evaluator_beta(
                 headless=True,
                 num_simulators=config.NUM_SIMULATORS_BRAIN,
@@ -90,9 +106,9 @@ class BrainOptimizerDE(Learner):
                 body=body,
                 output_mapping=output_mapping,
                 targets=targets,
+                nose=nose,
                 )
                 
-                solutions = population.individuals[idx].solutions
                 sol_t, sol_c = self.generate_T_C(solutions)
                 
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
@@ -106,7 +122,7 @@ class BrainOptimizerDE(Learner):
  
             # TODO: De something when no. of hinges is not enough to optimize
             else:
-                population.individuals[idx].fitness = -1000
+                population.individuals[idx].fitness = -1000.0
                 
         return population
     
@@ -126,8 +142,8 @@ class BrainOptimizerDE(Learner):
                 Every m_i gets a binary crossover mask with prob_cr to mix between m_i and t_i.
         C is outputted to be compared to T. The winning genes get passed on.
         """
-        
         # Create slightly perturbed population tensor of target matrices for the initial solution
+        T = np.array(T)
         if T.ndim == 1:
             T = np.stack([
                 np.reshape(T, (3,int(len(T)/3)))
@@ -152,7 +168,7 @@ class BrainOptimizerDE(Learner):
     
     def optimize(
             self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],
-            fit_type: int, evaluator) -> tuple[list[float], float, float]:
+            evaluator) -> tuple[list[float], float, float]:
         """
         Compare target vectors with candidate vectors for the next generation.
     
@@ -164,14 +180,13 @@ class BrainOptimizerDE(Learner):
         logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
         solutions = np.vstack((T, C))
-        fitnesses, betas = evaluator.evaluate(solutions, fit_type)
+        fitnesses = evaluator.evaluate(solutions)
         
         # Sort targets and betas by fitness indices (high to low)
         sort_idx = np.flip(np.argsort(fitnesses))
         solutions = solutions[sort_idx]
-        betas = betas[sort_idx]
         
-        return solutions[:config.NUM_POPULATION_BRAIN], max(fitnesses), betas[0]
+        return solutions[:config.NUM_POPULATION_BRAIN], max(fitnesses)
     
     def mutationIndices(
             self, t_pop) -> npt.NDArray[np.int_]:
