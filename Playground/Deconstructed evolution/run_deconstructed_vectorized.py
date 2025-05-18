@@ -8,6 +8,8 @@ TODO:   - Remove unused functions (encode/decode)
         - Check whether xy displacement and orientations are correct
         - Put modules in their respective folders
         - Targeted locomotion
+        - Update docstrings
+        - Parametrize targeting scores
 """
 
 import logging
@@ -58,6 +60,7 @@ from revolve2.modular_robot_simulation import (
 from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
+from revolve2.modular_robot_simulation._to_batch import to_batch
 
 from BodyCheck import BodyCheck
 # TODO: Check compatability
@@ -68,8 +71,8 @@ from BodyCheck import BodyCheck
 class BrainOptimizerDE(Learner):
     """Optimizer class (DE)"""
     
-    def __init__(self) -> None:
-        self
+    def __init__(self, bounds) -> None:
+        self.bounds = bounds # Target coordinate bounds
         
     def learn(
             self, population: Population,  
@@ -84,15 +87,15 @@ class BrainOptimizerDE(Learner):
         
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
-        
         # Reformat solution vectors to the correct sizes
         population = self.setSolutionSizes(population, solution_sizes)
+        # Generate targets to train a generation
+        targets = self.generateTargets()
         
         print("Body:")
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
             cpg_network_structure, output_mapping = brains[idx]
-            targets = [[3,4]]
             
             # Only optimize robots with at least 2 joints
             if cpg_network_structure.num_connections > 0:
@@ -105,8 +108,8 @@ class BrainOptimizerDE(Learner):
                 cpg_network_structure=cpg_network_structure,
                 body=body,
                 output_mapping=output_mapping,
-                targets=targets,
                 nose=nose,
+                targets=targets
                 )
                 
                 sol_t, sol_c = self.generate_T_C(solutions)
@@ -125,6 +128,13 @@ class BrainOptimizerDE(Learner):
                 population.individuals[idx].fitness = -1000.0
                 
         return population
+    
+    def generateTargets(self) -> npt.NDArray[np.float_]:
+        targets = np.random.randint(
+            low=self.bounds[0], high=self.bounds[1], size=(20,2)
+            ).astype(float)
+        
+        return targets
     
     def generate_T_C(
             self, T):
@@ -554,7 +564,8 @@ with Session(dbengine) as session:
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-learner = BrainOptimizerDE()    
+bounds = (-10, 10)
+learner = BrainOptimizerDE(bounds)    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(

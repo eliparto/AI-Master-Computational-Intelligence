@@ -35,8 +35,8 @@ class Evaluator:
         cpg_network_structure: CpgNetworkStructure,
         body: Body,
         output_mapping: list[tuple[int, ActiveHinge]],
+        targets: npt.NDArray[np.float_],
         nose: int,
-        targets: list[list[float]],
     ) -> None:
         """
         Initialize this object.
@@ -54,7 +54,7 @@ class Evaluator:
         self._cpg_network_structure = cpg_network_structure
         self._body = body
         self._output_mapping = output_mapping
-        self._nose=nose,
+        self._nose=nose
         self._targets=targets
 
     def evaluate(
@@ -72,6 +72,7 @@ class Evaluator:
         # TODO: Change to the locomotion network
         # TODO: Use a single robot instead of multiple
         # TODO: Figure out where to put target location and controller
+        # TODO: Export traversed paths and targets for plotting
 
         robots = [
             ModularRobot(
@@ -109,6 +110,17 @@ class Evaluator:
         #     )
         #     for robot, states in zip(robots, scene_states)
         # ]
+        
+        vect_target = target - pos # Vector from robot to target
+        dist_to_target = np.linalg.norm(vect_target)
+        
+        # TODO: Implement scroing system
+        # # Pop target from list if robot is deemed close enough
+        # if np.linalg.norm(vect_target) < 1:
+        #     try: 
+        #         targets = targets[1:]
+        #         self._score += 10 # TODO: Parametrize score for reaching target
+        #     except: self._score + 100 # Some condition if all targets reached
 
         fitness = self.fitness_displacement(robots, scene_states)
         
