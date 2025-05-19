@@ -101,7 +101,7 @@ class BrainOptimizerDE(Learner):
             if cpg_network_structure.num_connections > 0:
                 solutions = population.individuals[idx].solutions
                 nose = population.individuals[idx].nose
-                
+        
                 evaluator = Evaluator_beta(
                 headless=True,
                 num_simulators=config.NUM_SIMULATORS_BRAIN,
@@ -113,7 +113,6 @@ class BrainOptimizerDE(Learner):
                 )
                 
                 sol_t, sol_c = self.generate_T_C(solutions)
-                
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
                                 leave = False):
                     targets, max_fit, _ = self.optimize(sol_t, sol_c, evaluator)

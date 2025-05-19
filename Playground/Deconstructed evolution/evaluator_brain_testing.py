@@ -5,6 +5,8 @@ import math
 import numpy as np
 import numpy.typing as npt
 
+from matplotlib import pyplot as plt
+
 from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge, Body
 from revolve2.modular_robot.brain.cpg import BrainCpgNetworkStatic, BrainCpgNetworkLocomotion, CpgNetworkStructure
@@ -68,11 +70,6 @@ class Evaluator:
         :fit_type: Integer determining fitness type to calculate.
         :returns: Fitnesses of the solutions.
         """
-        
-        # TODO: Change to the locomotion network
-        # TODO: Use a single robot instead of multiple
-        # TODO: Figure out where to put target location and controller
-        # TODO: Export traversed paths and targets for plotting
 
         robots = [
             ModularRobot(
@@ -103,110 +100,90 @@ class Evaluator:
             scenes=scenes,
         )
 
-        # xy_displacements = [
-        #     fitness_functisions.xy_displacement(
-        #         states[0].get_modular_robot_simulation_state(robot),
-        #         states[-1].get_modular_robot_simulation_state(robot),
-        #     )
-        #     for robot, states in zip(robots, scene_states)
-        # ]
+        return self.calculateFitness(robots, scene_states)
         
-        vect_target = target - pos # Vector from robot to target
-        dist_to_target = np.linalg.norm(vect_target)
-        
-        # TODO: Implement scroing system
-        # # Pop target from list if robot is deemed close enough
-        # if np.linalg.norm(vect_target) < 1:
-        #     try: 
-        #         targets = targets[1:]
-        #         self._score += 10 # TODO: Parametrize score for reaching target
-        #     except: self._score + 100 # Some condition if all targets reached
-
-        fitness = self.fitness_displacement(robots, scene_states)
-        
-        return fitness
-        # TODO: Compare xy-displacement to generated fitness array
-    
-    def fitness_displacement(
-        self, robots: ModularRobot, scene_states) -> list[list[float], float]:
+    def calculateFitness(
+            self, robots: ModularRobot, scene_states
+            ) -> npt.NDArray[np.float_]:
         """
-        Calculate robot displacements.
-        :robots: Robots to be evaluated.
-        :scene_states: Simulated scened for every robot.
+        Wrapper to calculate each robot's fitness by rolling back through their respective trajectories
+        and observing how many targets have been reached.
         """
         fitnesses = []
-        for robot, states in zip(robots, scene_states):
-            sim_state_begin = states[0].get_modular_robot_simulation_state(robot)
-            sim_state_end = states[-1].get_modular_robot_simulation_state(robot)
+        for robot, scenes in zip(robots, scene_states):
+            coords = [
+                scene.get_modular_robot_simulation_state(robot).get_pose().position for scene in scenes
+                ]
+            coords = np.array(coords)[:,:2] # Ignore z-coordinates
             
-            # Start and end position vectors
-            begin_pos = np.array([
-                sim_state_begin.get_pose().position.x,
-                sim_state_begin.get_pose().position.y])
-            end_pos = np.array([
-                sim_state_end.get_pose().position.x, 
-                sim_state_end.get_pose().position.y
-                ])
-
-         
-            # Positional displacement vector
-            disp = end_pos - begin_pos
-            fitness = np.linalg.norm(disp)
-            fitnesses.append(fitness)
-
-        return np.array(fitnesses)
-    
-    def calcFitRotation(
-        self, robots: ModularRobot, scene_states) -> npt.NDArray[np.float_]:
-        """
-        Calculate the yaw angles (rotation around z-axis) of all robots.
-        :robots: Robots to be evaluated.
-        :scene_states: Simulated scened for every robot.
-        """
-        fitnesses = []
-        for robot, states in zip(robots, scene_states):
-            fitness = 0.0
-            for idx in range(len(states)-1):
-                # Extract simulation states at time t and (t+1)
-                sim_state_t = states[idx].get_modular_robot_simulation_state(robot)
-                sim_state_t_1 = states[idx+1].get_modular_robot_simulation_state(robot)
-                # Extract quaternions
-                quat_t = sim_state_t.get_pose().orientation
-                quat_t_1 = sim_state_t_1.get_pose().orientation
-                # Convert quaternion data to yaw angles
-                _, _, yaw_start = self.quaternion_to_euler(quat_t)
-                _, _, yaw_end = self.quaternion_to_euler(quat_t_1)
-                
-                # Calculate delta theta and pass through low-pass filter
-                delta = yaw_end - yaw_start
-                if abs(delta) > np.pi: delta = 0
-                fitness += delta
-            fitnesses.append(fitness)
+            fitnesses.append(self.rollBack(
+                coords=coords, targets=self._targets.copy(), threshold=0.5*2**0.5))
             
-        return np.array(fitnesses)
+        return fitnesses
+            
+    def rollBack(
+            self, coords: npt.NDArray[np.float_], 
+            targets: npt.NDArray[np.float_], threshold: float
+            ) -> float:
+        """
+        Calculate an individual robot's fitness score based on its trajectory.
+        Points are awarded for reaching/finishing reaching all targets, and the
+        last distance between the robot and its next target.
+        
+        :param coords: xy-coordinates of a robot.
+        :targets: Target coordinates.
+        """
+        score = 0.0
+        last_target = np.zeros(2) # In case no target is reached (first generations)
+        
+        # Calculate scores 1 and 2 for reaching targets
+        for coord in coords:
+            vect_toTarget = targets[0] - coord
+            if np.linalg.norm(vect_toTarget) < threshold: # Robot is within range of target
+                score += 10
+                try: # Targets left in target list
+                    last_target = targets[0]
+                    score += 10
+                except: # No targets left to traverse to (Inshaallah)
+                    score += 100
+                    break
                 
-    def quaternion_to_euler(self, q) -> tuple[float]:
+        # Calculate score 3 (distance to last target)
+        if len(targets) >= 1: # Only possible if there are still targets left
+            vect_toTarget = targets[0] - coords[-1]
+            vect_targetToTarget = targets[0] - last_target
+            
+            # Score 3 equal to proportion of distance traveled to next target
+            dist_toTarget = np.linalg.norm(vect_toTarget)
+            dist_interTarget = np.linalg.norm(vect_targetToTarget)
+            
+            if dist_toTarget < dist_interTarget:
+                score += (1 - (dist_toTarget / dist_interTarget))
+                
+        return score
+        
+    def plotTrajectory(
+            self, coords: npt.NDArray[np.float_], 
+            targets: npt.NDArray[np.float_]
+            ) -> None:
         """
-        Convert quaterion data into angles about roll, pitch and yaw axes.
+        Plot a robot's trajectory.
+        TODO: Implement drawing (un)reached targets.
         """
-        w, x, y, z = q
-        roll = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
-        pitch = np.arcsin(2*(w*y - z*x))
-        yaw = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+        x_r = coords[:,0]
+        y_r = coords[:,1]
+        x_t = targets[:,0]
+        y_t = targets[:,1]
+
+        plt.figure()
+        # Robot trajectory
+        plt.scatter(x_r, y_r, c=np.linspace(0,10,len(x_r)), s=20)
+        # Targets
+        plt.scatter(x_t, y_t, c="r", marker="1", s=50)
+        # Appearance
+        plt.title("Robot trajectory") # TODO: Implement robot's index
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.colorbar()
+        plt.show()
     
-        return roll, pitch, yaw  # Angles in radians
-        
-        
-
-
-
-
-
-
-
-
-
-
-
-
-

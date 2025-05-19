@@ -167,10 +167,10 @@ class BodyCheck():
         
         if w != d:
             if w > d:
-                if abs(min_x) <= abs(max_x): nose = 0
+                if abs(max_x) <= abs(min_x): nose = 0
                 else: nose = 2
             else:
-                if abs(min_y) <= abs(max_y): nose = 1
+                if abs(max_y) <= abs(min_y): nose = 1
                 else: nose = 3
                     
         else: nose = np.random.randint(4) # Square grid -> random orientation
