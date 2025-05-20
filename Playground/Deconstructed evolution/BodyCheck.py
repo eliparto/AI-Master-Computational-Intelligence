@@ -97,10 +97,18 @@ class BodyCheck(Morpho):
             ax.set_title(f"Body no. {idx}")
             
         modules = self.findModules(body)
-        grid = self.gridBody(body, modules)
-        ax.imshow(grid)
+        grid = np.flip(self.gridBody(body, modules), axis=0)
+        im = ax.imshow(grid)
         ax.set_xlabel("Y")
         ax.set_ylabel("X")
+        ax.set_xlim(10,30)
+        ax.set_ylim(10,30)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        cbar = ax.figure.colorbar(im, ax=ax, orientation="horizontal",
+                                  shrink=0.8)
+        cbar.set_label("No. of modules")
+        cbar.set_ticks(np.arange(0,np.max(grid)+1,1))
         if plt_out: plt.show()
         
     def plot3D(self, body, idx, plt_out=False, ax=None):
@@ -129,7 +137,7 @@ class BodyCheck(Morpho):
 
     def plotFigs(
             self, body: Body, nose: int, idx: int) -> None:
-        fig = plt.figure()
+        fig = plt.figure(constrained_layout=False)
         fig.tight_layout()
         subfigs = fig.subfigures(1,2)
 

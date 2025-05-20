@@ -71,12 +71,11 @@ from BodyCheck import BodyCheck
 class BrainOptimizerDE(Learner):
     """Optimizer class (DE)"""
     
-    def __init__(self) -> None:
-        pass
+    def __init__(self, bounds) -> None:
+        self.bounds = bounds
         
     def learn(
-            self, population: Population,  
-            targets = list[list[float]], **kwargs: Any,) -> Population:
+            self, population: Population, **kwargs: Any,) -> Population:
         """
         Generate individual robots from the population and optimize their weights.
         This process optimizes weights for 1). XY displacement; 2/3). Rotating left/right.
@@ -100,6 +99,7 @@ class BrainOptimizerDE(Learner):
             if cpg_network_structure.num_connections > 0:
                 solutions = population.individuals[idx].solutions
                 nose = population.individuals[idx].nose
+                assert nose >= 0, "No nose orientation. Call morpho.findNose() on population."
         
                 evaluator = Evaluator_beta(
                 headless=True,
@@ -108,13 +108,13 @@ class BrainOptimizerDE(Learner):
                 body=body,
                 output_mapping=output_mapping,
                 nose=nose,
-                targets=targets
+                targets=targets.copy()
                 )
                 
                 sol_t, sol_c = self.generate_T_C(solutions)
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
                                 leave = False):
-                    targets, max_fit, _ = self.optimize(sol_t, sol_c, evaluator)
+                    targets, max_fit = self.optimize(sol_t, sol_c, evaluator)
                     sol_t, sol_c = self.generate_T_C(targets)
                     
                 # Update fitness and solution
@@ -128,6 +128,9 @@ class BrainOptimizerDE(Learner):
         return population
     
     def generateTargets(self) -> npt.NDArray[np.float_]:
+        """
+        Generate list of target coordinates for robots to navigate to.
+        """
         targets = np.random.randint(
             low=self.bounds[0], high=self.bounds[1], size=(20,2)
             ).astype(float)
@@ -150,16 +153,18 @@ class BrainOptimizerDE(Learner):
                 Every m_i gets a binary crossover mask with prob_cr to mix between m_i and t_i.
         C is outputted to be compared to T. The winning genes get passed on.
         """
-        # Create slightly perturbed population tensor of target matrices for the initial solution
         T = np.array(T)
-        if T.ndim == 1:
+        assert T.ndim == 1 or 2, f"Incorrect target matrix shape: {T.shape}"
+        if T.ndim == 1: # One vector passed: expand into matrix and create pop of perturbed matrices
             T = np.stack([
                 np.reshape(T, (3,int(len(T)/3)))
                 ]*config.NUM_POPULATION_BRAIN
                 )
-            P_pop = np.random.normal(loc=0.0, scale=0.05, size=T.shape)
+            P_pop = np.random.normal(loc=0.0, scale=0.05, size=T.shape) # Perturbation
             T += P_pop
-            
+        elif T.ndim == 2: # List of vectors passed: turn each weight vector into weight matrix
+            T = np.reshape(T, (config.NUM_POPULATION_BRAIN,3,int(len(T[0])/3)))
+        
         # Create tensor of perturbation matrices
         m_1, m_2, m_3 = self.mutationIndices(len(T))
         M = T[m_1] + config.F * (T[m_2] - T[m_3])
@@ -183,9 +188,11 @@ class BrainOptimizerDE(Learner):
         :param T: Target vectors.
         :param C: Candidate solutions.
         """
-        # TODO: Remove 'betas'
+        # Reshape matrices into solution vectors
+        T = np.reshape(T, (len(T), len(T[0][0])*3))
+        C = np.reshape(C, (len(C), len(C[0][0])*3))
+        assert T.ndim == 2, f"Incorrect target matrix shape: {T.shape}"
         
-        logging.debug("DE: Comparing targets with candidates")
         # Evaluate targets
         solutions = np.vstack((T, C))
         fitnesses = evaluator.evaluate(solutions)
@@ -557,6 +564,7 @@ Base.metadata.create_all(dbengine)
 # Experiment setup:
 rng_seed = seed_from_time()
 rng = make_rng(rng_seed)
+bounds = (-5,5)
 
 # Create and save the experiment instance.
 experiment = Experiment(rng_seed=rng_seed)
@@ -568,7 +576,7 @@ with Session(dbengine) as session:
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-learner = BrainOptimizerDE()    
+learner = BrainOptimizerDE(bounds)    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(

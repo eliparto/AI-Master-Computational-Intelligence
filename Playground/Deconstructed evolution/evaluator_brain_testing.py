@@ -143,9 +143,9 @@ class Evaluator:
                 score += 10
                 try: # Targets left in target list
                     last_target = targets[0]
-                    score += 10
+                    score += 10 # Score 1
                 except: # No targets left to traverse to (Inshaallah)
-                    score += 100
+                    score += 100 # Score 2
                     break
                 
         # Calculate score 3 (distance to last target)
@@ -157,8 +157,7 @@ class Evaluator:
             dist_toTarget = np.linalg.norm(vect_toTarget)
             dist_interTarget = np.linalg.norm(vect_targetToTarget)
             
-            if dist_toTarget < dist_interTarget:
-                score += (1 - (dist_toTarget / dist_interTarget))
+            score += 1 - (dist_toTarget / dist_interTarget)
                 
         return score
         
