@@ -45,7 +45,7 @@ from revolve2.modular_robot.brain.cpg import (
 
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
 from revolve2.experimentation.evolution import ModularRobotEvolution
-from revolve2.experimentation.evolution.abstract_elements import Reproducer, Selector, Learner
+from revolve2.experimentation.evolution.abstract_elements import Reproducer, Selector, Learner, Morpho
 from revolve2.experimentation.optimization.ea import population_management, selection
 from revolve2.experimentation.rng import make_rng, seed_from_time
 
@@ -71,8 +71,8 @@ from BodyCheck import BodyCheck
 class BrainOptimizerDE(Learner):
     """Optimizer class (DE)"""
     
-    def __init__(self, bounds) -> None:
-        self.bounds = bounds # Target coordinate bounds
+    def __init__(self) -> None:
+        pass
         
     def learn(
             self, population: Population,  
@@ -84,7 +84,6 @@ class BrainOptimizerDE(Learner):
         
         :param population: Population to go through DE.
         """
-        
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
         # Reformat solution vectors to the correct sizes
@@ -286,6 +285,17 @@ class BrainOptimizerDE(Learner):
             children.individuals[idx].solutions = solutions.flatten('C').tolist()
         
         return children
+    
+    def _dummyFitnesses(
+            self, population: Population) -> Population:
+        """
+        Generate dummy fitness values for a population.
+        Only for testing.
+        """
+        for p in population.individuals:
+            p.fitness = np.random.normal()
+            
+        return population
 
 # Morphology optimization
 class ParentSelector(Selector):
@@ -357,16 +367,15 @@ class SurvivorSelector(Selector):
         :raises ValueError: If the population is empty.
         """
         
-        # Retrieve information from children
+        # Retrieve information from children        
         (
-            offspring, off_fitness_vectors, off_fitnesses, 
-            off_betas, off_solutions
-        ) = self.setupChildren(children) # TODO: Calculate (weighted) average fitnesses
+            off_genotypes, off_fitnesses, off_solutions, off_noses
+        ) = self.setupChildren(children)
         
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
             old_fitnesses=[i.fitness for i in population.individuals],
-            new_genotypes=offspring,
+            new_genotypes=off_genotypes,
             new_fitnesses=off_fitnesses,
             selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
                 selection_size=n,
@@ -384,19 +393,17 @@ class SurvivorSelector(Selector):
                     Individual(
                         genotype=population.individuals[i].genotype,
                         fitness=population.individuals[i].fitness,
-                        fitnesses=population.individuals[i].fitnesses,
                         solutions=population.individuals[i].solutions,
-                        beta=population.individuals[i].beta,
+                        nose=population.individuals[i].nose,
                     )
                     for i in original_survivors
                 ]
                 + [
                     Individual(
-                        genotype=offspring[i],
+                        genotype=off_genotypes[i],
                         fitness=off_fitnesses[i],
-                        fitnesses=off_fitness_vectors[i],
                         solutions=off_solutions[i],
-                        beta=off_betas[i],
+                        nose=off_noses[i],
                     )
                     for i in offspring_survivors
                 ]
@@ -412,19 +419,17 @@ class SurvivorSelector(Selector):
         """
         
         genotypes = []
-        fitness_values = []
-        fitness_vectors = []
+        fitnesses = []
         solutions = []
-        betas = []
+        noses = []
         
         for child in children.individuals:
             genotypes.append(child.genotype)
-            fitness_values.append(child.fitness)
-            fitness_vectors.append(child.fitnesses)
+            fitnesses.append(child.fitness)
             solutions.append(child.solutions)
-            betas.append(child.beta)
+            noses.append(child.nose)
             
-        return (genotypes, fitness_vectors, fitness_values, betas, solutions)
+        return (genotypes, fitnesses, solutions, noses)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -474,8 +479,8 @@ class CrossoverReproducer(Reproducer):
         # Output population of children (no fitnesses/solutions yet)
         children = Population(
             individuals = [
-                Individual(genotype=g_child, fitness=0.0, fitnesses=3*[0.0], 
-                           beta = 0.0, solutions=[]
+                Individual(genotype=g_child, fitness=0.0, 
+                           solutions=[], nose = -1
                            )
                 for g_child in offspring_genotypes
                 ]
@@ -563,19 +568,20 @@ with Session(dbengine) as session:
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-bounds = (-10, 10)
-learner = BrainOptimizerDE(bounds)    
+learner = BrainOptimizerDE()    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(
     rng=rng, innov_db_body=innov_db_body, innov_db_brain=innov_db_brain
 )
+morpho = BodyCheck()
 
 modular_robot_evolution = ModularRobotEvolution(
     parent_selection=parent_selector,
     survivor_selection=survivor_selector,
     reproducer=crossover_reproducer,
-    learner=learner
+    learner=learner,
+    morpho=morpho
 )
 
 # Generate the initial population's genotypes
@@ -596,11 +602,6 @@ population = Population(
         for genotype in initial_genotypes
         ]
     )
-
-body_check = BodyCheck(population, learner.setupLearner)
-
-# Dummy target for locomotion
-targets = [[10.0, 5.0]]
 
 # Finish the zeroth generation and save it to the database.
 generation = Generation(

@@ -15,21 +15,27 @@ from database_components import (
 )
 from revolve2.modular_robot.body import Module
 from revolve2.modular_robot.body.base import ActiveHinge, Brick, Core, Body
+from revolve2.experimentation.evolution.abstract_elements import Morpho
 
 
-class BodyCheck():
+class BodyCheck(Morpho):
     """
     Infer information from the robot's body, such as its 'nose', overall shape, etc.
     """
-    def __init__(self, population: Population, bodyFunc) -> None:
-        self.bodies, _, self.sol_sizes = bodyFunc(population)
-        self.population = population # Temporary
-        
+    def __init__(self) -> None:
         # Plotting variables
         self.colors = ["b", "r", "y"]
         self.legend = ["Brick", "Hinge", "Core"]
         self.marker = ["s", "^", "o"]
         self.sizes = [20, 20, 50]
+        
+    def findBodies(self, population: Population) -> list[Body]:
+        """
+        Returns all robot bodies in a population.
+        """
+        return [
+            p.genotype.develop().body for p in population.individuals
+            ]
         
     def findModules(self, body: Body) -> list[Module]:
         """
@@ -121,7 +127,8 @@ class BodyCheck():
         ax.legend()
         if plt_out: plt.show()      
 
-    def plotFigs(self, body, idx):
+    def plotFigs(
+            self, body: Body, nose: int, idx: int) -> None:
         fig = plt.figure()
         fig.tight_layout()
         subfigs = fig.subfigures(1,2)
@@ -130,12 +137,14 @@ class BodyCheck():
         ax2 = subfigs[1].add_subplot(projection="3d")        
         self.plot2D(body, idx, plt_out=False, ax=ax1)
         self.plot3D(body, idx, plt_out=False, ax=ax2)
-        nose = self.population.individuals[idx].nose
-        fig.suptitle(f"Body no. {idx}\nNo. of connections: {self.sol_sizes[idx]}\nNose orientation: {nose}")
+        fig.suptitle(f"Body no. {idx}\nNose orientation: {nose}")
         
-    def plotPop(self):
-        for idx, body in enumerate(self.bodies):
-            self.plotFigs(body, idx)
+    def plotPop(self, population: Population):
+        bodies = self.findBodies(population)
+        for idx, body in enumerate(bodies):
+            nose = population.individuals[idx].nose
+            assert nose >= 0, "Nose not initialized. Call findNose() on population first."
+            self.plotFigs(body, nose, idx)
     
     def findNose(self, population: Population):
         """
@@ -143,7 +152,8 @@ class BodyCheck():
         x or y direction and the closest from the core (i.e. a salamander).
         This method ignores height in the z-direction.
         """
-        for idx, body in enumerate(self.bodies):
+        bodies = self.findBodies(population)
+        for idx, body in enumerate(bodies):
             grid = self.findModules(body)[:,:2]
             min_x = np.min(grid[:,0])
             max_x = np.max(grid[:,0])
@@ -164,7 +174,6 @@ class BodyCheck():
           (3) < + > (1)
                 ⌄ (2)
         """
-        
         if w != d:
             if w > d:
                 if abs(max_x) <= abs(min_x): nose = 0
@@ -172,7 +181,6 @@ class BodyCheck():
             else:
                 if abs(max_y) <= abs(min_y): nose = 1
                 else: nose = 3
-                    
         else: nose = np.random.randint(4) # Square grid -> random orientation
         
         return nose
