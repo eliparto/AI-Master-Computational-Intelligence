@@ -34,7 +34,7 @@ class ParentSelector(Selector):
 
     def select(
         self, population: Population, **kwargs: Any
-    ) -> tuple[npt.NDArray[np.int_], dict[str, Population]]:
+    ) -> npt.NDArray[np.int_]:
         """
         Select the parents.
 
@@ -85,16 +85,15 @@ class SurvivorSelector(Selector):
         :raises ValueError: If the population is empty.
         """
         
-        # Retrieve information from children
+        # Retrieve information from children        
         (
-            offspring, off_fitness_vectors, off_fitnesses, 
-            off_betas, off_solutions
-        ) = self.setupChildren(children) # TODO: Calculate (weighted) average fitnesses
+            off_genotypes, off_fitnesses, off_solutions, off_noses
+        ) = self.setupChildren(children)
         
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
             old_fitnesses=[i.fitness for i in population.individuals],
-            new_genotypes=offspring,
+            new_genotypes=off_genotypes,
             new_fitnesses=off_fitnesses,
             selection_function=lambda n, genotypes, fitnesses: selection.multiple_unique(
                 selection_size=n,
@@ -112,19 +111,17 @@ class SurvivorSelector(Selector):
                     Individual(
                         genotype=population.individuals[i].genotype,
                         fitness=population.individuals[i].fitness,
-                        fitnesses=population.individuals[i].fitnesses,
                         solutions=population.individuals[i].solutions,
-                        beta=population.individuals[i].beta,
+                        nose=population.individuals[i].nose,
                     )
                     for i in original_survivors
                 ]
                 + [
                     Individual(
-                        genotype=offspring[i],
+                        genotype=off_genotypes[i],
                         fitness=off_fitnesses[i],
-                        fitnesses=off_fitness_vectors[i],
                         solutions=off_solutions[i],
-                        beta=off_betas[i],
+                        nose=off_noses[i],
                     )
                     for i in offspring_survivors
                 ]
@@ -132,27 +129,29 @@ class SurvivorSelector(Selector):
         )
     
     def setupChildren(
-            self, children: Population):
+            self, children: Population
+            ) -> tuple[list[Genotype], 
+                       list[float], 
+                       list[npt.NDArray[np.float_]], 
+                       list[int]]:
         """
-        Extract the genotypes and fitnesses for correct formatting.
+        Extract children's properties for generating survivors.
         
         :param children: Population of children.
         """
         
         genotypes = []
-        fitness_values = []
-        fitness_vectors = []
+        fitnesses = []
         solutions = []
-        betas = []
+        noses = []
         
         for child in children.individuals:
             genotypes.append(child.genotype)
-            fitness_values.append(child.fitness)
-            fitness_vectors.append(child.fitnesses)
+            fitnesses.append(child.fitness)
             solutions.append(child.solutions)
-            betas.append(child.beta)
+            noses.append(child.nose)
             
-        return (genotypes, fitness_vectors, fitness_values, betas, solutions)
+        return (genotypes, fitnesses, solutions, noses)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -166,7 +165,7 @@ class CrossoverReproducer(Reproducer):
         rng: np.random.Generator,
         innov_db_body: multineat.InnovationDatabase,
         innov_db_brain: multineat.InnovationDatabase,
-    ):
+    ) -> None:
         """
         Initialize the reproducer.
 
@@ -180,7 +179,7 @@ class CrossoverReproducer(Reproducer):
 
     def reproduce(
         self, parentPairs: list[list[int]], 
-        parent_population: Population) -> list[Genotype]:
+        parent_population: Population) -> Population:
         """
         Reproduce the population by crossover.
 
@@ -202,8 +201,8 @@ class CrossoverReproducer(Reproducer):
         # Output population of children (no fitnesses/solutions yet)
         children = Population(
             individuals = [
-                Individual(genotype=g_child, fitness=0.0, fitnesses=3*[0.0], 
-                           beta = 0.0, solutions=[]
+                Individual(genotype=g_child, fitness=0.0, 
+                           solutions=[], nose = -1
                            )
                 for g_child in offspring_genotypes
                 ]
@@ -217,7 +216,7 @@ class CrossoverReproducer(Reproducer):
             self, children: Population, population: Population,
             parentPairs: list[list[int]]) -> Population:
         """
-        Fill in the best performing parent's solution
+        Fill in the best performing parent's solution per child
         
         :param population: Population of all individuals minus the children.
         :param children: Population of children.
@@ -231,7 +230,8 @@ class CrossoverReproducer(Reproducer):
         return children
         
     def findParentSolutions(
-            self, parentPairs: list[list[int]], population: Population) -> list[list[float]]:
+            self, parentPairs: list[list[int]], population: Population
+            ) -> list[npt.NDArray[np.float_]]:
         """
         Finds the best parent solution for a child given its parent pair.
 
@@ -244,6 +244,6 @@ class CrossoverReproducer(Reproducer):
                 idx = p1
             else: idx = p2
             
-            best_solutions.append([population.individuals[idx].solutions])
+            best_solutions.append(population.individuals[idx].solutions)
             
         return(best_solutions) 

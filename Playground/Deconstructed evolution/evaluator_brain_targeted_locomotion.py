@@ -4,12 +4,11 @@ import math
 
 import numpy as np
 import numpy.typing as npt
-
 from matplotlib import pyplot as plt
 
 from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge, Body
-from revolve2.modular_robot.brain.cpg import BrainCpgNetworkStatic, BrainCpgNetworkLocomotion, CpgNetworkStructure
+from revolve2.modular_robot.brain.cpg import BrainCpgNetworkLocomotion, CpgNetworkStructure
 from revolve2.modular_robot_simulation import (
     ModularRobotScene,
     Terrain,
@@ -18,8 +17,6 @@ from revolve2.modular_robot_simulation import (
 from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
-
-from revolve2.standards.fitness_functions import FitnessEvaluator
 
 class Evaluator:
     """Provides evaluation of robots."""
@@ -48,6 +45,8 @@ class Evaluator:
         :param cpg_network_structure: Cpg structure for the brain.
         :param body: Modular body of the robot.
         :param output_mapping: A mapping between active hinges and the index of their corresponding cpg in the cpg network structure.
+        :param targets: List of xy-coordinates of targets for the robot to navigate towards.
+        :param nose: Frontal (nose) orientation of the robot.
         """
         self._simulator = LocalSimulator(
             viewer_type = "native", headless=headless, num_simulators=num_simulators
@@ -64,10 +63,9 @@ class Evaluator:
         solutions: list[npt.NDArray[np.float_]],
     ) -> npt.NDArray[np.float_]:
         """
-        Evaluate multiple robots.
+        Evaluate multiple solutions vectors for a robot.
 
         :param solutions: Solutions to evaluate.
-        :fit_type: Integer determining fitness type to calculate.
         :returns: Fitnesses of the solutions.
         """
 
@@ -126,7 +124,7 @@ class Evaluator:
             targets: npt.NDArray[np.float_], threshold: float
             ) -> float:
         """
-        Calculate an individual robot's fitness score based on its trajectory.
+        Calculate an individual robot's fitness by retracing its steps and observing if targets have been reached.
         Points are awarded for reaching/finishing reaching all targets, and the
         last distance between the robot and its next target.
         
@@ -156,6 +154,8 @@ class Evaluator:
             # Score 3 equal to proportion of distance traveled to next target
             dist_toTarget = np.linalg.norm(vect_toTarget)
             dist_interTarget = np.linalg.norm(vect_targetToTarget)
+            if dist_toTarget == 0: dist_toTarget += 0.001 # Prevent division by zero
+            if dist_interTarget == 0: dist_interTarget += 0.001
             
             score += 1 - (dist_toTarget / dist_interTarget)
                 

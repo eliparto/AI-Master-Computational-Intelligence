@@ -1,6 +1,4 @@
-""" Morphology Analysis 
-TODO: - Remove self.population and self.bodies -> Make seperately callable
-"""
+""" Morphology Analysis """
 
 import numpy as np
 import numpy.typing as npt
@@ -13,6 +11,7 @@ from database_components import (
     Individual,
     Population,
 )
+
 from revolve2.modular_robot.body import Module
 from revolve2.modular_robot.body.base import ActiveHinge, Brick, Core, Body
 from revolve2.experimentation.evolution.abstract_elements import Morpho
@@ -20,7 +19,7 @@ from revolve2.experimentation.evolution.abstract_elements import Morpho
 
 class BodyCheck(Morpho):
     """
-    Infer information from the robot's body, such as its 'nose', overall shape, etc.
+    Infer information about the robot's body, such as its 'nose', overall shape, etc.
     """
     def __init__(self) -> None:
         # Plotting variables
@@ -39,7 +38,7 @@ class BodyCheck(Morpho):
         
     def findModules(self, body: Body) -> list[Module]:
         """
-        Find all modules for a single robot.
+        Find all modules' coordinates for a single robot.
         """
         modules = body.find_modules_of_type(Brick) + \
             body.find_modules_of_type(ActiveHinge) + \
@@ -55,7 +54,7 @@ class BodyCheck(Morpho):
             self, body: Body
             ) -> list[list[Brick], list[ActiveHinge], list[Core]]:
         """
-        Find all different types of modules for a single robot.
+        Find all modules' coordinates for a single robot per module type.
         """
         modules = [
             body.find_modules_of_type(Brick),
@@ -77,10 +76,9 @@ class BodyCheck(Morpho):
         
         return coords
     
-    def gridBody(self, body, coords):
+    def gridBody(self, body, coords) -> npt.NDArray[np.int_]:
         """
         Generate a bounding box for a robot body.
-        
         :param modules: List of modules in a robot.
         """
         grid = np.zeros([40,40])
@@ -90,7 +88,10 @@ class BodyCheck(Morpho):
         
         return grid
     
-    def plot2D(self, body, idx, plt_out=False, ax=None):
+    def plot2D(self, body, idx, plt_out=False, ax=None) -> None:
+        """
+        Generate 2D plot of a robot (looking down from the z-axis.)
+        """
         if not ax:
             fig = plt.figure()
             ax = fig.add_subplot()
@@ -111,7 +112,10 @@ class BodyCheck(Morpho):
         cbar.set_ticks(np.arange(0,np.max(grid)+1,1))
         if plt_out: plt.show()
         
-    def plot3D(self, body, idx, plt_out=False, ax=None):
+    def plot3D(self, body, idx, plt_out=False, ax=None) -> None:
+        """
+        Generate 3D plot of a robot
+        """
         if not ax:
             fig = plt.figure()
             ax = fig.add_subplot(projection="3d")
@@ -137,6 +141,9 @@ class BodyCheck(Morpho):
 
     def plotFigs(
             self, body: Body, nose: int, idx: int) -> None:
+        """
+        Plot a robot's 2D and 3D representation side by side.
+        """
         fig = plt.figure(constrained_layout=False)
         fig.tight_layout()
         subfigs = fig.subfigures(1,2)
@@ -147,14 +154,17 @@ class BodyCheck(Morpho):
         self.plot3D(body, idx, plt_out=False, ax=ax2)
         fig.suptitle(f"Body no. {idx}\nNose orientation: {nose}")
         
-    def plotPop(self, population: Population):
+    def plotPop(self, population: Population) -> None:
+        """
+        Plot a population of robots.
+        """
         bodies = self.findBodies(population)
         for idx, body in enumerate(bodies):
             nose = population.individuals[idx].nose
             assert nose >= 0, "Nose not initialized. Call findNose() on population first."
             self.plotFigs(body, nose, idx)
     
-    def findNose(self, population: Population):
+    def findNose(self, population: Population) -> Population:
         """
         Find the `nose` (frontal orientation) of the robots. The nose is in the longest 
         x or y direction and the closest from the core (i.e. a salamander).
