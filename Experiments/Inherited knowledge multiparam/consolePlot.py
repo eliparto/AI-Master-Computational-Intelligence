@@ -19,3 +19,6 @@ def consolePlot(fit_old, fit_new):
              label = "Curr. gen")
     
     print(fig.show(legend=True))
+    print("New generation:")
+    print(f"Max fitness: {max(fit_new)}")
+    print(f"Avg fitness: {np.average(fit_new)}\n")

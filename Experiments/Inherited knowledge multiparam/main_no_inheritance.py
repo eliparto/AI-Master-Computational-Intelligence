@@ -103,7 +103,6 @@ def run_experiment(dbengine: Engine, plot: bool) -> None:
     save_to_db(dbengine, generation)
 
     # Start the actual optimization process/evolutionary loop
-    print("\nOptimizing...")
     for it in tqdm(range(config.NUM_GENERATIONS_BODY), leave = True,
                    position = 0):
         generation.generation_index = it
