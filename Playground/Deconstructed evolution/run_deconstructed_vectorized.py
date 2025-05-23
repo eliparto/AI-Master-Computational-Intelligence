@@ -114,14 +114,14 @@ class BrainOptimizerDE(Learner):
                 sol_t, sol_c = self.generate_T_C(solutions)
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
                                 leave = False):
-                    targets, max_fit = self.optimize(sol_t, sol_c, evaluator)
-                    sol_t, sol_c = self.generate_T_C(targets)
+                    sol_next_gen, max_fit = self.optimize(sol_t, sol_c, evaluator)
+                    sol_t, sol_c = self.generate_T_C(sol_next_gen)
                     
                 # Update fitness and solution
-                population.individuals[idx].solutions = targets[0].flatten('C').tolist()
+                population.individuals[idx].solutions = sol_next_gen[0].flatten('C').tolist()
                 population.individuals[idx].fitness = max_fit
  
-            # TODO: De something when no. of hinges is not enough to optimize
+            # TODO: Do something when no. of hinges is not enough to optimize
             else:
                 population.individuals[idx].fitness = -1000.0
                 
@@ -274,6 +274,7 @@ class BrainOptimizerDE(Learner):
         """
         
         for idx, sol_size in enumerate(sol_sizes):
+            if sol_size == 0: continue # Robots with no connections are skipped in learn()
             solutions = children.individuals[idx].solutions
             solutions = np.reshape(solutions, (3, int(len(solutions)/3)))
             
@@ -528,7 +529,7 @@ class CrossoverReproducer(Reproducer):
                 idx = p1
             else: idx = p2
             
-            best_solutions.append([population.individuals[idx].solutions])
+            best_solutions.append(population.individuals[idx].solutions)
             
         return(best_solutions) 
 
