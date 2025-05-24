@@ -27,6 +27,7 @@ from revolve2.experimentation.rng import make_rng, seed_from_time
 from ModularEvolution import ParentSelector, SurvivorSelector, CrossoverReproducer
 from BrainOptimizer import BrainOptimizerDE
 from BodyCheck import BodyCheck
+from writeOut import writeSetup
        
 # Experiment
 def run_experiment(dbengine: Engine, plot: bool) -> None:
@@ -90,11 +91,11 @@ def run_experiment(dbengine: Engine, plot: bool) -> None:
             ]
         )
     # Train the initial population -> Start by generating solutions and finding nose orientations
-    print("Population initialized.\nTraining initial population...\n")
+    print("\nPopulation initialized.\nTraining initial population...\n")
     population = morpho.findNose(population)
     population = learner.initialSolutions(population)
     population = learner.learn(population)
-    print("\nInitial population ready.")
+    print("Initial population ready.")
 
     # Finish the zeroth generation and save it to the database.
     generation = Generation(
@@ -103,7 +104,7 @@ def run_experiment(dbengine: Engine, plot: bool) -> None:
     save_to_db(dbengine, generation)
 
     # Start the actual optimization process/evolutionary loop
-    print("\nOptimizing...")
+    print("\nOptimizing...\n")
     for it in tqdm(range(config.NUM_GENERATIONS_BODY), leave = True,
                    position = 0):
         generation.generation_index = it
@@ -137,6 +138,7 @@ def main() -> None:
     
     if args.name:   
         dbName = "Databases/" + args.name + ".sqlite"
+        writeSetup(args.name)
     else: 
         dbName = "Databases/" + config.DATABASE_FILE 
         
