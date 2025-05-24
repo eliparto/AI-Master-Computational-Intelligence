@@ -138,9 +138,9 @@ class Evaluator:
         for coord in coords:
             vect_toTarget = targets[0] - coord
             if np.linalg.norm(vect_toTarget) < threshold: # Robot is within range of target
-                score += 10
                 try: # Targets left in target list
                     last_target = targets[0]
+                    targets = targets[1:] # Pop reached target
                     score += 10 # Score 1
                 except: # No targets left to traverse to (Inshaallah)
                     score += 100 # Score 2
