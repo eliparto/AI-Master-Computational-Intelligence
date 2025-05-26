@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 
 from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge, Body
-from revolve2.modular_robot.brain.cpg import BrainCpgNetworkLocomotion, CpgNetworkStructure
+from revolve2.modular_robot.brain.cpg import BrainCpgNetworkLocomotion, BrainCpgNetworkLocomotionNewstate, CpgNetworkStructure
 from revolve2.modular_robot_simulation import (
     ModularRobotScene,
     Terrain,
@@ -60,19 +60,20 @@ class Evaluator:
 
     def evaluate(
         self,
-        solutions: list[npt.NDArray[np.float_]],
+        solutions: list[npt.NDArray[np.float_]], sim_time: int,
     ) -> npt.NDArray[np.float_]:
         """
         Evaluate multiple solutions vectors for a robot.
 
         :param solutions: Solutions to evaluate.
+        :param sim_time: Simulation time in seconds. Set to None for indefinite simulation.
         :returns: Fitnesses of the solutions.
         """
 
         robots = [
             ModularRobot(
                 body=self._body,
-                brain=BrainCpgNetworkLocomotion.uniform_from_params(
+                brain=BrainCpgNetworkLocomotionNewstate.uniform_from_params(
                     params=params,
                     cpg_network_structure=self._cpg_network_structure,
                     initial_state_uniform=math.sqrt(2) * 0.5,
@@ -92,9 +93,12 @@ class Evaluator:
             scenes.append(scene)
 
         # Simulate all scenes.
+        batch_parameters = make_standard_batch_parameters()
+        batch_parameters.simulation_time = sim_time
+        
         scene_states = simulate_scenes(
             simulator=self._simulator,
-            batch_parameters=make_standard_batch_parameters(),
+            batch_parameters=batch_parameters,
             scenes=scenes,
         )
 
@@ -108,16 +112,18 @@ class Evaluator:
         and observing how many targets have been reached.
         """
         fitnesses = []
+        allCoords = []
         for robot, scenes in zip(robots, scene_states):
             coords = [
                 scene.get_modular_robot_simulation_state(robot).get_pose().position for scene in scenes
                 ]
             coords = np.array(coords)[:,:2] # Ignore z-coordinates
+            allCoords.append(coords)
             
             fitnesses.append(self.rollBack(
                 coords=coords, targets=self._targets.copy(), threshold=0.5*2**0.5))
             
-        return fitnesses
+        return fitnesses, allCoords
             
     def rollBack(
             self, coords: npt.NDArray[np.float_], 
@@ -162,13 +168,15 @@ class Evaluator:
         return score
         
     def plotTrajectory(
-            self, coords: npt.NDArray[np.float_], 
+            self, coords: list[npt.NDArray[np.float_]], 
             targets: npt.NDArray[np.float_]
             ) -> None:
         """
         Plot a robot's trajectory.
         TODO: Implement drawing (un)reached targets.
+        ONLY USE TO PLOT ONE SOLUTION
         """
+        coords = coords[0]
         x_r = coords[:,0]
         y_r = coords[:,1]
         x_t = targets[:,0]
@@ -180,9 +188,10 @@ class Evaluator:
         # Targets
         plt.scatter(x_t, y_t, c="r", marker="1", s=50)
         # Appearance
-        plt.title("Robot trajectory") # TODO: Implement robot's index
+        plt.grid(visible=True, axis="both", ls="--")
+        plt.title(f"Robot trajectory\nTargets: {targets[0]}  {targets[1]}  {targets[2]}") # TODO: Implement robot's index
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.colorbar()
+        plt.colorbar(label="Time")
         plt.show()
     

@@ -41,7 +41,7 @@ class BrainOptimizerDE(Learner):
         # Reformat solution vectors to the correct sizes
         population = self.setSolutionSizes(population, solution_sizes)
         # Generate targets to train a generation
-        targets = self.generateTargets()
+        # targets = self.generateTargets()
         
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
@@ -60,7 +60,7 @@ class BrainOptimizerDE(Learner):
                 body=body,
                 output_mapping=output_mapping,
                 nose=nose,
-                targets=targets.copy()
+                targets=config.TARGETS.copy()
                 )
                 
                 sol_t, sol_c = self.generate_T_C(solutions)
@@ -75,7 +75,7 @@ class BrainOptimizerDE(Learner):
  
             # TODO: Do something when no. of hinges is not enough to optimize
             else:
-                population.individuals[idx].fitness = -1000.0
+                population.individuals[idx].fitness = -10.0
                 
         return population
     
@@ -147,7 +147,9 @@ class BrainOptimizerDE(Learner):
         
         # Evaluate targets
         solutions = np.vstack((T, C))
-        fitnesses = evaluator.evaluate(solutions)
+        fitnesses, _ = evaluator.evaluate(
+            solutions=solutions,
+            sim_time=config.SIM_TIME)
         
         # Sort targets and betas by fitness indices (high to low)
         sort_idx = np.flip(np.argsort(fitnesses))

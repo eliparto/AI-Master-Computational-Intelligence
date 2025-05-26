@@ -105,7 +105,6 @@ def main() -> None:
                 Experiment.id.label("experiment_id"),
                 Generation.generation_index,
                 Individual.fitness,
-                Individual.fitnesses,
                 Individual.solutions,
             )
             .join_from(Experiment, Generation, Experiment.id == Generation.experiment_id)
@@ -113,21 +112,8 @@ def main() -> None:
             .join_from(Population, Individual, Population.id == Individual.population_id),
             dbengine,
         )
-        df[["fitness_forward", "fitness_rot_left", "fitness_rot_right"]] = pd.DataFrame(
-            df["fitnesses"].tolist(), index = df.index)
-        df.drop(columns = ["fitnesses"], inplace = True)
-        
-        solutions = df.loc[df["fitness"].idxmax(), "solutions"]
-        solutions = np.reshape(solutions, (3, int(len(solutions)/3)))
-        
-        #for col_name in fit_types:
+
         plotFitness(df, "fitness")
-        plotFitness(df, "fitness_forward")
-        plotFitness(df, "fitness_rot_left")
-        plotFitness(df, "fitness_rot_right")
-        plotSolution(solutions[0], "Weights forward")
-        plotSolution(solutions[1], "Weights rot left")
-        plotSolution(solutions[2], "Weights rot right")
         plt.show()
         
     else: print("Pass database name with '-name'. Closing now.")

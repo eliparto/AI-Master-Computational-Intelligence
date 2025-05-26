@@ -1,8 +1,17 @@
 """
 Configuration parameters
 """
+import numpy as np
+
 # Experiment
 BOUNDS = (-5,5) # Target xy-coordinate bounds
+SIM_TIME = 80 # Simulation time
+TARGETS = np.array(
+    [[1,1],
+     [2,-2],
+     [-2,-1]]
+    )
+
 DESC = (
         "Simulate evolution with inherited knowledge.\n"
         "Don't forget to:\n"
@@ -12,7 +21,7 @@ DESC = (
 
 # Body
 DATABASE_FILE = "database.sqlite"
-NUM_REPETITIONS_BODY = 1 # No. of repetitions of the morphology optimization process
+NUM_REPETITIONS_BODY = 3 # No. of repetitions of the morphology optimization process
 POPULATION_SIZE_BODY = 40
 OFFSPRING_SIZE = 20
 NUM_GENERATIONS_BODY = 10 # No. of body optimization generations
