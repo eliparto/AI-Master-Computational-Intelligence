@@ -4,6 +4,7 @@ import logging
 import numpy as np
 from matplotlib import pyplot as plt
 import time
+import config
 
 from database_components import Genotype, Individual
 from evaluator_brain_targeted_locomotion import Evaluator
@@ -94,7 +95,7 @@ def main() -> None:
         print(f"Targets:\n{targets[:3]}")
         print(f"Training fitness:\t{fitness}")
         print(f"Rerun fitness:\t\t{simFitness[0]}")
-        if args.p: evaluator.plotTrajectory(coords, targets[:3])
+        if args.p: evaluator.plotTrajectory(coords, config.TARGETS)
         
     else: print("Pass database name with '-name'. Closing now.")
 
