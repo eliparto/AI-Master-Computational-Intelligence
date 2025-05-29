@@ -1,7 +1,6 @@
 """Evaluator class."""
 
 import math
-
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
@@ -60,7 +59,8 @@ class Evaluator:
 
     def evaluate(
         self,
-        solutions: list[npt.NDArray[np.float_]], sim_time: int,
+        solutions: list[npt.NDArray[np.float_]], 
+        sim_time: int, use_state_reset: bool,
     ) -> npt.NDArray[np.float_]:
         """
         Evaluate multiple solutions vectors for a robot.
@@ -70,20 +70,37 @@ class Evaluator:
         :returns: Fitnesses of the solutions.
         """
 
-        robots = [
-            ModularRobot(
-                body=self._body,
-                brain=BrainCpgNetworkLocomotionNewstate.uniform_from_params(
-                    params=params,
-                    cpg_network_structure=self._cpg_network_structure,
-                    initial_state_uniform=math.sqrt(2) * 0.5,
-                    output_mapping=self._output_mapping,
-                    nose=self._nose,
-                    targets=self._targets,
-                ),
-            )
-            for params in solutions
-        ]
+        if use_state_reset:     # Simulate with state-array resetting when chainging actions
+            robots = [
+                ModularRobot(
+                    body=self._body,
+                    brain=BrainCpgNetworkLocomotionNewstate.uniform_from_params(
+                        params=params,
+                        cpg_network_structure=self._cpg_network_structure,
+                        initial_state_uniform=math.sqrt(2) * 0.5,
+                        output_mapping=self._output_mapping,
+                        nose=self._nose,
+                        targets=self._targets,
+                    ),
+                )
+                for params in solutions
+            ]
+            
+        else:                   # Simulate without state-array resetting
+            robots = [
+                ModularRobot(
+                    body=self._body,
+                    brain=BrainCpgNetworkLocomotion.uniform_from_params(
+                        params=params,
+                        cpg_network_structure=self._cpg_network_structure,
+                        initial_state_uniform=math.sqrt(2) * 0.5,
+                        output_mapping=self._output_mapping,
+                        nose=self._nose,
+                        targets=self._targets,
+                    ),
+                )
+                for params in solutions
+            ]
 
         # Create the scenes.
         scenes = []
@@ -121,7 +138,7 @@ class Evaluator:
             allCoords.append(coords)
             
             fitnesses.append(self.rollBack(
-                coords=coords, targets=self._targets.copy(), threshold=0.5*2**0.5))
+                coords=coords, targets=self._targets.copy(), threshold=0.25))
             
         return fitnesses, allCoords
             
@@ -174,7 +191,7 @@ class Evaluator:
         """
         Plot a robot's trajectory.
         TODO: Implement drawing (un)reached targets.
-        ONLY USE TO PLOT ONE SOLUTION
+        ONLY USE TO PLOT ONE SOLUTION OF A ROBOT
         """
         coords = coords[0]
         x_r = coords[:,0]
@@ -183,15 +200,25 @@ class Evaluator:
         y_t = targets[:,1]
 
         plt.figure()
+        # Targets
+        ax = plt.gca()
+        for i in range(len(targets)):
+            circle = plt.Circle(targets[i], radius=0.25,
+                                facecolor="pink", edgecolor="red")
+            ax.add_patch(circle)    
+        plt.scatter(x_t, y_t, c="r", marker="1", s=50, label="Targets")
         # Robot trajectory
         plt.scatter(x_r, y_r, c=np.linspace(0,10,len(x_r)), s=20)
-        # Targets
-        plt.scatter(x_t, y_t, c="r", marker="1", s=50)
+        # Start position
+        plt.scatter(0, 0, c="orange", marker="x", s=75, label="Start pos")
         # Appearance
         plt.grid(visible=True, axis="both", ls="--")
         plt.title(f"Robot trajectory\nTargets: {targets[0]}  {targets[1]}  {targets[2]}") # TODO: Implement robot's index
         plt.xlabel("X")
         plt.ylabel("Y")
         plt.colorbar(label="Time")
+        plt.gca().set_aspect("equal")
+        ax.set_xlim([-1,2])
+        plt.legend()
         plt.show()
     

@@ -25,8 +25,15 @@ from revolve2.experimentation.evolution.abstract_elements import Learner
 class BrainOptimizerDE(Learner):
     """Optimizer class (Differential Evolution)"""
     
-    def __init__(self, bounds) -> None:
+    def __init__(
+            self, bounds: tuple[float], use_state_reset: bool
+            ) -> None:
+        """
+        :param bounds: Target spawn bounds (deprecated).
+        :param newState: Bool to toggle using new state-array when switching actions.
+        """
         self.bounds = bounds
+        self.use_state_reset = use_state_reset
         
     def learn(
             self, population: Population, **kwargs: Any,) -> Population:
@@ -149,7 +156,8 @@ class BrainOptimizerDE(Learner):
         solutions = np.vstack((T, C))
         fitnesses, _ = evaluator.evaluate(
             solutions=solutions,
-            sim_time=config.SIM_TIME)
+            sim_time=config.SIM_TIME,
+            use_state_reset=self.use_state_reset)
         
         # Sort targets and betas by fitness indices (high to low)
         sort_idx = np.flip(np.argsort(fitnesses))

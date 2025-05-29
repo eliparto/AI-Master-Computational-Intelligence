@@ -30,12 +30,15 @@ from BodyCheck import BodyCheck
 from writeOut import writeSetup
        
 # Experiment
-def run_experiment(dbengine: Engine, plot: bool) -> None:
+def run_experiment(
+        dbengine: Engine, plot: bool, use_state_reset: bool
+        ) -> None:
     """
     Run an experiment.
 
     :param dbengine: An opened database with matching initialize database structure.
-    :param optim_type: Specifies the learning optimizer (DE or CMA).
+    :param plot: Bool to toggle per-generaration in-console fitness plotting.
+    :param newState: Bool to toggle CPGs with state-array resetting when changing actions.
     """
     # Set up and create experiment instance
     rng_seed = seed_from_time()
@@ -59,7 +62,9 @@ def run_experiment(dbengine: Engine, plot: bool) -> None:
     - morpho: Morphology analyzer used for e.g. finding frontal orientation and visualization.
     """
     morpho = BodyCheck()
-    learner = BrainOptimizerDE(bounds=config.BOUNDS)    
+    learner = BrainOptimizerDE(
+        bounds=config.BOUNDS, use_state_reset=use_state_reset
+    )    
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
     crossover_reproducer = CrossoverReproducer(
@@ -131,6 +136,8 @@ def main() -> None:
     parser.add_argument("-name", type=str, help="Specify the database filename.")
     parser.add_argument("-r", action="store_true", help="Remove the prior log.")
     parser.add_argument("-p", action="store_true", help="Plot fitnesses per generation")
+    parser.add_argument("-e", action="store_true", help="Add to simulate using state-resetting.")
+
     args = parser.parse_args()
     
     # Check if the databases folder is present
@@ -138,7 +145,7 @@ def main() -> None:
     
     if args.name:   
         dbName = "Databases/" + args.name + ".sqlite"
-        writeSetup(args.name)
+        writeSetup(args.name, args.e)
     else: 
         dbName = "Databases/" + config.DATABASE_FILE 
         
@@ -159,7 +166,7 @@ def main() -> None:
     # Run the experiment several times.
     for i in range(config.NUM_REPETITIONS_BODY):
         print(f"Experiment no. {i+1}/{config.NUM_REPETITIONS_BODY}:")
-        run_experiment(dbengine, args.p)
+        run_experiment(dbengine, args.p, args.e)
 
 def save_to_db(dbengine: Engine, generation: Generation) -> None:
     """

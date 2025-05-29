@@ -1,9 +1,5 @@
 """Rerun the best robot between all experiments."""
 
-import logging
-import numpy as np
-from matplotlib import pyplot as plt
-import time
 import config
 
 from database_components import Genotype, Individual
@@ -13,15 +9,10 @@ from sqlalchemy.orm import Session
 import argparse
 
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
-from revolve2.experimentation.logging import setup_logging
-
-from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge
 from revolve2.modular_robot.brain.cpg import (
     active_hinges_to_cpg_network_structure_neighbor,
 )
-
-from BrainOptimizer import BrainOptimizerDE as opt
 
 def main() -> None:
     """Perform the rerun."""
@@ -30,10 +21,9 @@ def main() -> None:
     parser.add_argument("-name", type=str, help="Specify the database filename.")
     parser.add_argument("-t", "-time", type=int, help="Specify simulation time. Set to '0' for indefinite time.")
     parser.add_argument("-p", "-plot", action="store_true", help="Toggle to disable simulator view and only plot trajectory.")
+    parser.add_argument("-e", action="store_true", help="Add to simulate using state-resetting.")
     args = parser.parse_args()
-    
-    setup_logging()
-    
+        
     if args.name:
         # Database name
         db_name = "Databases/" + args.name + ".sqlite"
@@ -68,13 +58,15 @@ def main() -> None:
         ) = active_hinges_to_cpg_network_structure_neighbor(active_hinges)
         
         # Setup the evaluator
-        bounds = (-5,5)
-        targets = opt(bounds).generateTargets()
+        # bounds = (-5,5)
+        # targets = opt(bounds).generateTargets()
+        targets = config.TARGETS
 
         if args.p: headless = True # Disable mujoco viewer to plot trajectory
         else: headless = False
         
         print("Simulating...")
+
         evaluator = Evaluator(
             headless=headless,
             num_simulators=1,
@@ -90,9 +82,9 @@ def main() -> None:
         simFitness, coords = evaluator.evaluate(
             solutions=[solutions],
             sim_time=sim_time,
+            use_state_reset=args.e
             )
         print("Simulating done.")
-        print(f"Targets:\n{targets[:3]}")
         print(f"Training fitness:\t{fitness}")
         print(f"Rerun fitness:\t\t{simFitness[0]}")
         if args.p: evaluator.plotTrajectory(coords, config.TARGETS)

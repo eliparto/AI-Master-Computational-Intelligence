@@ -21,8 +21,12 @@ txt = (
        f"F-FACTOR:\t\t\t{config.F}\n"
        )
 
-def writeSetup(fileName):
+def writeSetup(fileName, new_state_toggle):
+    global txt
     fileName = "Databases/" + fileName + ".txt"
+    if new_state_toggle: txt += "\n\nNEW STATE ARRAY:\t\tON"
+    else: txt += "\n\nNEW STATE ARRAY:\t\tOFF"
+    
     with open(fileName, "w") as f:
         f.write(txt)
         

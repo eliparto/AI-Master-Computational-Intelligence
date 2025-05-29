@@ -8,8 +8,8 @@ BOUNDS = (-5,5) # Target xy-coordinate bounds
 SIM_TIME = 80 # Simulation time
 TARGETS = np.array(
     [[1,1],
-     [2,-2],
-     [-2,-1]]
+     [0,2],
+     [1,4]]
     )
 
 DESC = (
