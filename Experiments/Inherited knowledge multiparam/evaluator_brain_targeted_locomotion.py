@@ -164,9 +164,9 @@ class Evaluator:
                 try: # Targets left in target list
                     last_target = targets[0]
                     targets = targets[1:] # Pop reached target
-                    score += 10 # Score 1
+                    score += 1 # Score 1
                 except: # No targets left to traverse to (Inshaallah)
-                    score += 100 # Score 2
+                    score += 10 # Score 2
                     break
                 
         # Calculate score 3 (distance to last target)
