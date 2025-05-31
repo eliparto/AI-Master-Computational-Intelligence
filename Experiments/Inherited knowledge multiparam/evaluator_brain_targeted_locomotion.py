@@ -1,9 +1,11 @@
 """Evaluator class."""
 
+import config
 import math
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
+from pyrr import Quaternion, Vector3
 
 from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge, Body
@@ -16,6 +18,10 @@ from revolve2.modular_robot_simulation import (
 from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
+from revolve2.simulation.scene.geometry import GeometryPlane, GeometrySphere
+from revolve2.simulation.scene import AABB, Color, Pose
+from revolve2.simulation.scene.vector2 import Vector2
+from revolve2.simulators.mujoco_simulator.textures import Flat
 
 class Evaluator:
     """Provides evaluation of robots."""
@@ -35,6 +41,7 @@ class Evaluator:
         output_mapping: list[tuple[int, ActiveHinge]],
         targets: npt.NDArray[np.float_],
         nose: int,
+        waypointTerrain: bool = False,
     ) -> None:
         """
         Initialize this object.
@@ -46,17 +53,19 @@ class Evaluator:
         :param output_mapping: A mapping between active hinges and the index of their corresponding cpg in the cpg network structure.
         :param targets: List of xy-coordinates of targets for the robot to navigate towards.
         :param nose: Frontal (nose) orientation of the robot.
+        :param waypointTerrain: True to render waypoints in simulator (for rerun.py).
         """
         self._simulator = LocalSimulator(
             viewer_type = "native", headless=headless, num_simulators=num_simulators
         )
-        self._terrain = terrains.flat()
         self._cpg_network_structure = cpg_network_structure
         self._body = body
         self._output_mapping = output_mapping
         self._nose=nose
         self._targets=targets
-
+        self._terrain = terrains.flat()
+        if waypointTerrain: self._terrain = self.genTerrain()
+        
     def evaluate(
         self,
         solutions: list[npt.NDArray[np.float_]], 
@@ -221,4 +230,34 @@ class Evaluator:
         ax.set_xlim([-1,2])
         plt.legend()
         plt.show()
+        
+    def genTerrain(self) -> Terrain:
+        """
+        Generate terrain with targets for rerun visualization.
+        :param targets: List of xy-coordinates of targets/waypoints.
+        """
+        # Plane
+        static_geometry = [
+            GeometryPlane(
+                pose=Pose(),
+                mass=0.0,
+                size=Vector2([20.0,20.0]),
+                )
+            ]
+        
+        # Waypoint spheres
+        targetSpheres = [
+            GeometrySphere(
+                pose=Pose(
+                    position=Vector3([t[0], t[1], 2]), orientation=Quaternion()
+                    ),
+                mass=0.0,
+                radius=0.25,
+                texture=Flat(primary_color=Color(255, 0, 200, 255)),
+                ) for t in config.TARGETS
+            ]
+        
+        static_geometry += targetSpheres
+        
+        return Terrain(static_geometry=static_geometry)
     

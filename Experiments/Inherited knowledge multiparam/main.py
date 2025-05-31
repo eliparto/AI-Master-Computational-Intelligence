@@ -118,6 +118,7 @@ def run_experiment(
             prev_fit = [p.fitness for p in population.individuals]
             population = modular_robot_evolution.step(population)
             curr_fit = [p.fitness for p in population.individuals]
+            print(f"Run {it+1}/{config.NUM_GENERATIONS_BODY}")
             consolePlot(prev_fit, curr_fit)
 
         # Make it all into a generation and save it to the database.

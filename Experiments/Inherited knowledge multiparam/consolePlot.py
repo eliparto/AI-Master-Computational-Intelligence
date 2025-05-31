@@ -5,7 +5,7 @@ import numpy as np
 
 def consolePlot(fit_old, fit_new):
     """
-    Plot all fitnesses after learning
+    Plot pre- and post-learning fitnesses (sorted).
     """
     x = np.arange(0, len(fit_old), 1)
     fig = plotille.Figure()
@@ -17,6 +17,8 @@ def consolePlot(fit_old, fit_new):
              label = "Prev. gen")
     fig.plot(x, sorted(fit_new), interp = "linear", lc = "cyan", 
              label = "Curr. gen")
+    fig.plot(x, np.ones(len(fit_old))*np.average(fit_new), interp = "linear",
+             lc = "yellow", label  ="Curr. gen (AVG)")
     
     print(fig.show(legend=True))
     print("New generation:")
