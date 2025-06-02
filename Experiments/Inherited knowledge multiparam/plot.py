@@ -14,7 +14,7 @@ import argparse
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
 from revolve2.experimentation.logging import setup_logging
 
-def plotFitness(df, name):
+def plotFitness(df, name, figName):
     agg_per_experiment_per_generation = (
         df.groupby(["experiment_id", "generation_index"])
         .agg({name: ["max", "mean"]})
@@ -74,24 +74,19 @@ def plotFitness(df, name):
         alpha=0.2,
     )
 
+    title = f"Mean and max {name} across repetitions with std as shade"
+    if figName != "": title += ("\n" + figName)
     plt.xlabel("Generation index")
-    plt.ylabel("Fitness")
-    plt.title("Mean and max " + name + " across repetitions with std as shade")
+    plt.ylabel("Fitness\n(no. of targets reached)")
+    plt.title(title)
     plt.legend()
-
-def plotSolution(solution, name):
-    plt.figure()
-    plt.hist(solution)
-    plt.xlabel("Weight value")
-    plt.ylabel("Frequency")
-    plt.title(name)
-    
 
 def main() -> None:
     """Run the program."""
     # Check for passed arguments
     parser = argparse.ArgumentParser(description="Plot the max and mean fitnesses for an experiment.")
     parser.add_argument("-name", type=str, help="Specify the input database's filename.")
+    parser.add_argument("-figName", type=str, help="Specify custom figure title.")
     args = parser.parse_args()
     
     if args.name:
@@ -113,7 +108,9 @@ def main() -> None:
             dbengine,
         )
 
-        plotFitness(df, "fitness")
+        if args.figName: figName = args.figName
+        else: figName = ""
+        plotFitness(df, "fitness", figName)
         plt.show()
         
     else: print("Pass database name with '-name'. Closing now.")

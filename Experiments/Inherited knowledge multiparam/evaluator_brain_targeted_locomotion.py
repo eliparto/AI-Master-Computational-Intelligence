@@ -195,13 +195,15 @@ class Evaluator:
         
     def plotTrajectory(
             self, coords: list[npt.NDArray[np.float_]], 
-            targets: npt.NDArray[np.float_]
+            targets: npt.NDArray[np.float_], plotTitle: str
             ) -> None:
         """
         Plot a robot's trajectory.
         TODO: Implement drawing (un)reached targets.
         ONLY USE TO PLOT ONE SOLUTION OF A ROBOT
         """
+        title=f"Targets: {targets[0]}  {targets[1]}  {targets[2]}"
+        if plotTitle != "": title = plotTitle + "\n" + title
         coords = coords[0]
         x_r = coords[:,0]
         y_r = coords[:,1]
@@ -217,12 +219,13 @@ class Evaluator:
             ax.add_patch(circle)    
         plt.scatter(x_t, y_t, c="r", marker="1", s=50, label="Targets")
         # Robot trajectory
+        plt.plot(np.array(x_r), np.array(y_r), c="gray", alpha=0.4)
         plt.scatter(x_r, y_r, c=np.linspace(0,10,len(x_r)), s=20)
         # Start position
-        plt.scatter(0, 0, c="orange", marker="x", s=75, label="Start pos")
+        plt.scatter(0, 0, c="orange", marker="x", s=120, label="Start pos")
         # Appearance
         plt.grid(visible=True, axis="both", ls="--")
-        plt.title(f"Robot trajectory\nTargets: {targets[0]}  {targets[1]}  {targets[2]}") # TODO: Implement robot's index
+        plt.title("Robot trajectory\n" + title)
         plt.xlabel("X")
         plt.ylabel("Y")
         plt.colorbar(label="Time")
@@ -249,7 +252,7 @@ class Evaluator:
         targetSpheres = [
             GeometrySphere(
                 pose=Pose(
-                    position=Vector3([t[0], t[1], 2]), orientation=Quaternion()
+                    position=Vector3([t[0], t[1], -0.22]), orientation=Quaternion()
                     ),
                 mass=0.0,
                 radius=0.25,

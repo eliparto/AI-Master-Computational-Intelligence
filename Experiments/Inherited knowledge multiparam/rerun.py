@@ -29,14 +29,25 @@ from revolve2.simulators.mujoco_simulator.textures import Checker, Flat, Gradien
 def main() -> None:
     """Perform the rerun."""
     # Check for passed arguments
-    parser = argparse.ArgumentParser(description="Show the best performing robot for a given evolutionary database.")
+    parser = argparse.ArgumentParser(description="Show the best performing robot for a given evolutionary database.\nRun using mjpython on Mac for sim visualization.")
     parser.add_argument("-name", type=str, help="Specify the database filename.")
-    parser.add_argument("-t", "-time", type=int, help="Specify simulation time. Set to '0' for indefinite time.")
-    parser.add_argument("-p", "-plot", action="store_true", help="Toggle to disable simulator view and only plot trajectory.")
+    parser.add_argument("-figName", type=str, help="Specify figure title.")
+    parser.add_argument("-t", "-time", type=int, default=80, help="Specify simulation time. Set to '0' for indefinite time. Default: 80.")
+    parser.add_argument("-p", action="store_true", help="Toggle to disable simulator view and only plot trajectory.")
     parser.add_argument("-e", action="store_true", help="Add to simulate using state-resetting.")
     args = parser.parse_args()
         
     if args.name:
+        # Quick logic
+        if args.figName: # Make sure that the script outputs a plot
+            figTitle = args.figName
+            assert args.p == True, "figName can only be used when plotting using -p."
+        else: figTitle = ""
+        if args.p: 
+            headless = True # Disable viewer if cript outputs a plot
+            assert args.t != 0, "Can't plot path with indefinite simulation time"
+        else: headless = False
+        
         # Database name
         db_name = "Databases/" + args.name + ".sqlite"
         
@@ -73,9 +84,6 @@ def main() -> None:
         # bounds = (-5,5)
         # targets = opt(bounds).generateTargets()
         targets = config.TARGETS
-
-        if args.p: headless = True # Disable mujoco viewer to plot trajectory
-        else: headless = False
         
         print("Simulating...")
 
@@ -91,9 +99,8 @@ def main() -> None:
             )
         
         sim_time = args.t
-        if sim_time == 0: 
-            sim_time = None
-            assert args.p == False, "Can't plot path with indefinite simulation time"
+        if sim_time == 0: sim_time = None # Indefinite simulation time
+        
         simFitness, coords = evaluator.evaluate(
             solutions=[solutions],
             sim_time=sim_time,
@@ -102,7 +109,7 @@ def main() -> None:
         print("Simulating done.")
         print(f"Training fitness:\t{fitness}")
         print(f"Rerun fitness:\t\t{simFitness[0]}")
-        if args.p: evaluator.plotTrajectory(coords, config.TARGETS)
+        if args.p: evaluator.plotTrajectory(coords, config.TARGETS, figTitle)
         
     else: print("Pass database name with '-name'. Closing now.")
 

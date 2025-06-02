@@ -9,7 +9,7 @@ SIM_TIME = 80 # Simulation time
 TARGETS = np.array(
     [[1,1],
      [0,2],
-     [1,4]]
+     [1,3]]
     )
 
 DESC = (

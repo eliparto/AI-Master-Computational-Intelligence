@@ -19,8 +19,11 @@ def consolePlot(fit_old, fit_new):
              label = "Curr. gen")
     fig.plot(x, np.ones(len(fit_old))*np.average(fit_new), interp = "linear",
              lc = "yellow", label  ="Curr. gen (AVG)")
+    fig.plot(x, np.ones(len(fit_old))*np.average(fit_old), interp = "linear",
+             lc = "red", label  ="Prev. gen (AVG)")
     
     print(fig.show(legend=True))
     print("New generation:")
-    print(f"Max fitness: {max(fit_new)}")
-    print(f"Avg fitness: {np.average(fit_new)}\n")
+    print(f"Max fitness: {round(max(fit_new), 5)}")
+    print(f"Avg fitness: {round(np.average(fit_new), 5)}\n")
+    print(f"Avg learning delta: {round(np.average(fit_new) - np.average(fit_old), 5)}\n")
