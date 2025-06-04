@@ -69,7 +69,7 @@ with Session(dbengine) as session:
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-learner = BrainOptimizerDE(bounds)    
+learner = BrainOptimizerDE(bounds, use_state_reset=True)    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(
