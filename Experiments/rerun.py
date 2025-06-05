@@ -1,9 +1,6 @@
 """Rerun the best robot between all experiments."""
 
 import config
-import numpy as np
-import numpy.typing as npt
-
 from database_components import Genotype, Individual
 from evaluator_brain_targeted_locomotion import Evaluator
 from sqlalchemy import select
@@ -15,16 +12,6 @@ from revolve2.modular_robot.body.base import ActiveHinge
 from revolve2.modular_robot.brain.cpg import (
     active_hinges_to_cpg_network_structure_neighbor,
 )
-from revolve2.modular_robot_simulation import (
-    ModularRobotScene,
-    Terrain,
-    simulate_scenes,
-)
-from revolve2.simulation.scene import AABB, Color, Pose
-from revolve2.simulation.scene.geometry import GeometryHeightmap, GeometryPlane, GeometryBox, GeometrySphere
-from revolve2.simulation.scene.vector2 import Vector2
-from pyrr import Quaternion, Vector3
-from revolve2.simulators.mujoco_simulator.textures import Checker, Flat, Gradient
 
 def main() -> None:
     """Perform the rerun."""
