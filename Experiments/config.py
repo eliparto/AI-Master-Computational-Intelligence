@@ -5,11 +5,12 @@ import numpy as np
 
 # Experiment
 BOUNDS = (-5,5) # Target xy-coordinate bounds
-SIM_TIME = 80 # Simulation time
+SIM_TIME = 120 # Simulation time
 TARGETS = np.array(
     [[1,1],
      [0,2],
-     [1,3]]
+     [1,3],
+     [0,4]]
     )
 
 DESC = (
@@ -21,14 +22,14 @@ DESC = (
 
 # Body
 DATABASE_FILE = "database.sqlite"
-NUM_REPETITIONS_BODY = 10 # No. of repetitions of the morphology optimization process
-POPULATION_SIZE_BODY = 6
-OFFSPRING_SIZE = 3
-NUM_GENERATIONS_BODY = 10 # No. of body optimization generations
+NUM_REPETITIONS_BODY = 2 # No. of repetitions of the morphology optimization process
+POPULATION_SIZE_BODY = 50
+OFFSPRING_SIZE = 25
+NUM_GENERATIONS_BODY = 12 # No. of body optimization generations
 
 # Differential Evolution parameters
 NUM_SIMULATORS_BRAIN = 7
-NUM_GENERATIONS_BRAIN = 8
+NUM_GENERATIONS_BRAIN = 10
 NUM_POPULATION_BRAIN = 10
 PERTURB_SD_MOD = 2
 P_CR = 0.7 # [0,1]
