@@ -21,11 +21,13 @@ txt = (
        f"F-FACTOR:\t\t\t{config.F}\n"
        )
 
-def writeSetup(fileName, new_state_toggle):
+def writeSetup(fileName, new_state_toggle, inherit_toggle):
     global txt
     fileName = "Databases/" + fileName + ".txt"
     if new_state_toggle: txt += "\n\nNEW STATE ARRAY:\t\tON"
     else: txt += "\n\nNEW STATE ARRAY:\t\tOFF"
+    if inherit_toggle: txt += "\n\nINHERITANCE:\t\t\tON"
+    else: txt += "\n\nINHERITANCE:\t\t\tOFF"
     
     with open(fileName, "w") as f:
         f.write(txt)

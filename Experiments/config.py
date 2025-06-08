@@ -17,7 +17,7 @@ DESC = (
         "Simulate evolution with inherited knowledge.\n"
         "Don't forget to:\n"
         " - Check parameters in config.py.\n"
-        " - Set the number of simulators to maximally utilize CPU for multithreaded simulation.\n(Recommend no. of cores minus 2)s\n"
+        " - Set the number of simulators to maximally utilize CPU for multithreaded simulation.\n(Recommend no. of threads minus 1)\n"
         )
 
 # Body

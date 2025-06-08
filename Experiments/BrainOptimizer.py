@@ -1,6 +1,6 @@
 """ Brain Optimizer (Differential Evolution) """
 
-import config
+import config_template as config
 import numpy as np
 import numpy.typing as npt
 from typing import Any
@@ -26,14 +26,16 @@ class BrainOptimizerDE(Learner):
     """Optimizer class (Differential Evolution)"""
     
     def __init__(
-            self, bounds: tuple[float], use_state_reset: bool
+            self, bounds: tuple[float], use_state_reset: bool, inherit: bool,
             ) -> None:
         """
         :param bounds: Target spawn bounds (deprecated).
         :param newState: Bool to toggle using new state-array when switching actions.
+        :param inherit: Bool to inherit weights from parents.
         """
         self.bounds = bounds
         self.use_state_reset = use_state_reset
+        self.inherit = inherit
         
     def learn(
             self, population: Population, **kwargs: Any,) -> Population:
@@ -45,10 +47,13 @@ class BrainOptimizerDE(Learner):
         """
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
-        # Reformat solution vectors to the correct sizes
-        population = self.setSolutionSizes(population, solution_sizes)
-        # Generate targets to train a generation
-        # targets = self.generateTargets()
+        # Choose inherited or randomly initialized weights
+        if self.inherit: 
+            population = self.setSolutionSizes(population, solution_sizes)
+            print("Inheriting..")
+        else: 
+            population = self.initialSolutions(population)
+            print("Initializing random weights..")
         
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
@@ -88,7 +93,7 @@ class BrainOptimizerDE(Learner):
     
     def generateTargets(self) -> npt.NDArray[np.float_]:
         """
-        Generate list of target coordinates for robots to navigate to.
+        [DEPRECATED] Generate list of target coordinates for robots to navigate to.
         """
         targets = np.random.randint(
             low=self.bounds[0], high=self.bounds[1], size=(20,2)

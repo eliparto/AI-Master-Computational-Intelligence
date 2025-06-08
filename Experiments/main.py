@@ -5,7 +5,8 @@ from tqdm import tqdm
 import argparse
 from consolePlot import consolePlot
 
-import config
+# TODO: Change back to normal config file
+import config_template as config
 import multineat
 
 from database_components import (
@@ -31,13 +32,14 @@ from writeOut import writeSetup
        
 # Experiment
 def run_experiment(
-        dbengine: Engine, plot: bool, use_state_reset: bool
+        dbengine: Engine, plot: bool, inherit: bool, use_state_reset: bool
         ) -> None:
     """
     Run an experiment.
 
     :param dbengine: An opened database with matching initialize database structure.
     :param plot: Bool to toggle per-generaration in-console fitness plotting.
+    :param inherit: Bool to toggle inherited knowledge (weight inheritance).
     :param newState: Bool to toggle CPGs with state-array resetting when changing actions.
     """
     # Set up and create experiment instance
@@ -63,7 +65,7 @@ def run_experiment(
     """
     morpho = BodyCheck()
     learner = BrainOptimizerDE(
-        bounds=config.BOUNDS, use_state_reset=use_state_reset
+        bounds=config.BOUNDS, use_state_reset=use_state_reset, inherit=inherit,
     )    
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
@@ -136,7 +138,8 @@ def main() -> None:
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("-name", type=str, help="Specify the database filename.")
     parser.add_argument("-r", action="store_true", help="Remove the prior log.")
-    parser.add_argument("-p", action="store_true", help="Plot fitnesses per generation")
+    parser.add_argument("-p", action="store_true", help="Plot fitnesses per generation.")
+    parser.add_argument("-i", action="store_true", help="Use inherited knowledge.")
     parser.add_argument("-e", action="store_true", help="Add to simulate using state-resetting.")
 
     args = parser.parse_args()
@@ -146,7 +149,9 @@ def main() -> None:
     
     if args.name:   
         dbName = "Databases/" + args.name + ".sqlite"
-        writeSetup(args.name, args.e)
+        writeSetup(
+            fileName=args.name, new_state_toggle=args.e, inherit_toggle=args.i
+            )
     else: 
         dbName = "Databases/" + config.DATABASE_FILE 
         
@@ -167,7 +172,9 @@ def main() -> None:
     # Run the experiment several times.
     for i in range(config.NUM_REPETITIONS_BODY):
         print(f"Experiment no. {i+1}/{config.NUM_REPETITIONS_BODY}:")
-        run_experiment(dbengine, args.p, args.e)
+        run_experiment(
+            dbengine=dbengine, plot=args.p, use_state_reset=args.e, inherit=args.i
+            )
 
 def save_to_db(dbengine: Engine, generation: Generation) -> None:
     """
