@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
 
 # Import database
-dbName = "Databases/newstate_waypoints_short_1.sqlite"
+dbName = "Databases/exp_inherit_2.sqlite"
 dbengine = open_database_sqlite(
     dbName, open_method=OpenMethod.OPEN_IF_EXISTS
 )
@@ -22,8 +22,11 @@ def calcDiversity(genotypes: list[Genotype]) -> list[float]:
     :param gen: List of all genotypes within a generation (size = pop.size).
     """
     bodies = [g.develop().body for g in genotypes]
-    
-    return None
+    for body in bodies:
+        # Morphology feature vector
+        f = morpho.xyz_symmetry(body) + morpho.count_bricks_hinges(body) + ...
+        # TODO: Finish vector construction
+    return bodies
     
 #TODO: Expand to import JSON
 with Session(dbengine) as ses:
@@ -48,20 +51,18 @@ rows_by_experiment_and_generation = defaultdict(lambda: defaultdict(list))
 for row in rows:
     rows_by_experiment_and_generation[row.experiment_id][row.generation_index].append(row)
 
-# Now convert the list of rows per generation to list of tuples
+# Convert the list of rows per generation to list of genotypes
 for experiment_id, generations in rows_by_experiment_and_generation.items():
     for generation_index, row_list in generations.items():
-        # Extract tuples (Genotype, fitness, nose) for each row in this generation
-        tuples_list = [(row[2], row[3], row[5]) for row in row_list]
-        
-        # Replace the list of rows with the list of tuples
-        rows_by_experiment_and_generation[experiment_id][generation_index] = tuples_list
-        
-diversities = []
-for i in range(len(rows_by_experiment_and_generation)):
-    gen_genotypes = [
-        rows_by_experiment_and_generation[i][j] for j in range(config.NUM_GENERATIONS_BODY+1)
-        ]
-    
+        genotypes = [row[2] for row in row_list]
+        rows_by_experiment_and_generation[experiment_id][generation_index] = genotypes
 
+experiments = [
+        [
+        rows_by_experiment_and_generation[i][j] for j in range(config.NUM_GENERATIONS_BODY+1)
+        ] for i in range(1, len(rows_by_experiment_and_generation)+1)
+    ]
+
+
+    
 morpho = BodyCheck()

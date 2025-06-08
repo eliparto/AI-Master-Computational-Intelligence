@@ -1,6 +1,6 @@
 """ Brain Optimizer (Differential Evolution) """
 
-import config_template as config
+import config
 import numpy as np
 import numpy.typing as npt
 from typing import Any
@@ -48,13 +48,10 @@ class BrainOptimizerDE(Learner):
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
         # Choose inherited or randomly initialized weights
-        if self.inherit: 
-            population = self.setSolutionSizes(population, solution_sizes)
-            print("Inheriting..")
-        else: 
-            population = self.initialSolutions(population)
-            print("Initializing random weights..")
+        if self.inherit: population = self.setSolutionSizes(population, solution_sizes)
+        else: population = self.initialSolutions(population)
         
+        # Learning loop
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
             # Setup optimizer
             cpg_network_structure, output_mapping = brains[idx]

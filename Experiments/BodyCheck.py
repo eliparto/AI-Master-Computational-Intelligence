@@ -11,11 +11,11 @@ from database_components import (
     Individual,
     Population,
 )
+from typing import overload, Union
 
 from revolve2.modular_robot.body import Module
 from revolve2.modular_robot.body.base import ActiveHinge, Brick, Core, Body
 from revolve2.experimentation.evolution.abstract_elements import Morpho
-
 
 class BodyCheck(Morpho):
     """
@@ -27,6 +27,8 @@ class BodyCheck(Morpho):
         self.legend = ["Brick", "Hinge", "Core"]
         self.marker = ["s", "^", "o"]
         self.sizes = [20, 20, 50]
+        
+        self.epsilon = 0.00001 # Prevent division errors w/ bboxes
         
     def findBodies(self, population: Population) -> list[Body]:
         """
@@ -75,6 +77,20 @@ class BodyCheck(Morpho):
             ]
         
         return coords
+    
+    def findBBox(self, body: Body) -> tuple[int]:
+        """
+        Find a robot's bounding box.
+        """
+        coords = self.findModules(body)
+        xMax = np.max(coords[:,0])
+        xMin = np.min(coords[:,0])
+        yMax = np.max(coords[:,1])
+        yMin = np.min(coords[:,1])
+        zMax = np.max(coords[:,2])
+        zMin = np.min(coords[:,2])
+        
+        return ((xMin, xMax), (yMin, yMax), (zMin, zMax))
     
     def gridBody(self, body, coords) -> npt.NDArray[np.int_]:
         """
@@ -154,10 +170,27 @@ class BodyCheck(Morpho):
         self.plot3D(body, idx, plt_out=False, ax=ax2)
         fig.suptitle(f"Body no. {idx}\nNose orientation: {nose}")
         
-    def plotPop(self, population: Population) -> None:
+    @overload
+    def plotPop(self, population: Population) -> None: ...
+        
+    @overload
+    def plotPop(self, population: list[Body]) -> None: ...
+    
+    def plotPop(self, population: Union[Population, list[Body]]) -> None:
         """
         Plot a population of robots.
         """
+        if isinstance(population, Population):
+            bodies = self.findBodies(population)
+            noses = [p.nose for p in population.individuals]
+            assert -1 not in noses, "Nose orientations not correctly initialized. Call findNose(population)."
+            
+        elif isinstance(population, list):
+            bodies = population
+            noses = ...
+            
+            # TODO:L Finish nose implementation        
+        
         bodies = self.findBodies(population)
         for idx, body in enumerate(bodies):
             nose = population.individuals[idx].nose
@@ -202,3 +235,87 @@ class BodyCheck(Morpho):
         else: nose = np.random.randint(4) # Square grid -> random orientation
         
         return nose
+    
+    def xyz_symmetry(self, body: Body) -> list[float]:
+        """
+        Calculate a body's symmetry around its x-, y-, and z-axes.
+        """
+        bboxes = self.findBBox(body)
+        symmetries = [
+            1 - (
+                np.abs(bbox[0] - bbox[1])/(bbox[0] + bbox[1] + self.epsilon)
+                ) for bbox in bboxes
+            ]
+        return symmetries
+    
+    def count_bricks_hinges(self, body: Body) -> list[int]:
+        """
+        Return a robot's no. of bricks and hinges.
+        """
+        bricks, hinges, _ = self.findModulesSep(body)
+        return [len(bricks), len(hinges)]
+    
+    def calc_size_volume(self, body: Body) -> list[int]:
+        """
+        Calculate a robot's size and bounding box and displacement volume.
+        """
+        # Calculate bounding box volume
+        # Extract axis lengths from bounding boxes
+        ranges = self.findBBox(body)
+        lengths = [
+            np.abs(ax_range[1] - ax_range[0]) for ax_range in ranges
+            ]
+        # Prevent lengths of zero
+        for i in range(len(lengths)):
+            if lengths == 0: lengths[i] += 1
+        
+        vol_bbox = lengths[0]*lengths[1]*lengths[2]
+        
+        # Calculate displacemed volume (assume 1 unit of displacement for every part)
+        vol_disp = len(self.findModules(body))
+        
+        return [vol_bbox, vol_disp, lengths[0], lengths[1], lengths[2]]
+    
+    def find_limbs(self, body: Body) -> list[int, float]:
+        """
+        Find the no. of limbs and avg. limb length for a robot.
+        """
+        _, hinge_coords, _ = self.findModulesSep(body)
+        
+        coords_set = set(map(tuple, hinge_coords))
+        visited = set()
+        limb_lengths = []
+    
+        directions = np.array([
+            [1, 0, 0],  # +x
+            [0, 1, 0],  # +y
+            [0, 0, 1],  # +z
+        ])
+    
+        for coord in coords_set:
+            coord_arr = np.array(coord)
+    
+            for dir_vec in directions:
+                next_coord = tuple(coord_arr + dir_vec)
+                prev_coord = tuple(coord_arr - dir_vec)
+    
+                if next_coord in coords_set and prev_coord not in coords_set:
+                    current = coord_arr.copy()
+                    limb = [tuple(current)]
+    
+                    while True:
+                        next_candidate = tuple(current + dir_vec)
+                        if next_candidate in coords_set:
+                            limb.append(next_candidate)
+                            current += dir_vec
+                        else:
+                            break
+    
+                    if not any(c in visited for c in limb):
+                        visited.update(limb)
+                        limb_lengths.append(len(limb) - 1)
+    
+        return [len(limb_lengths), limb_lengths]
+                
+            
+            

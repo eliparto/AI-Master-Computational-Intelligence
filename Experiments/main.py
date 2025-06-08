@@ -5,8 +5,7 @@ from tqdm import tqdm
 import argparse
 from consolePlot import consolePlot
 
-# TODO: Change back to normal config file
-import config_template as config
+import config
 import multineat
 
 from database_components import (
