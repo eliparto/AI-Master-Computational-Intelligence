@@ -19,14 +19,28 @@ dbengine = open_database_sqlite(
 def calcDiversity(genotypes: list[Genotype]) -> list[float]:
     """
     Calculate the diversity of a generation of robots.
+    First, a matrix of feature vectors is made, after which it is normalized
+    per feature. Finally, we perform PCA to extract the ellipsoid volume as a
+    measure of diversity.
     :param gen: List of all genotypes within a generation (size = pop.size).
     """
     bodies = [g.develop().body for g in genotypes]
-    for body in bodies:
-        # Morphology feature vector
-        f = morpho.xyz_symmetry(body) + morpho.count_bricks_hinges(body) + ...
-        # TODO: Finish vector construction
-    return bodies
+    noses = morpho.findNose(bodies)
+    
+    # Construct matrix F of morpho feature vectors f
+    F = [
+            morpho.xyz_symmetry(bodies[idx]) + \
+            morpho.count_bricks_hinges(bodies[idx]) + \
+            morpho.calc_size_volume(bodies[idx]) + \
+            morpho.findLimbs(bodies[idx]) + \
+            [noses[idx]] for idx in range(len(bodies))
+        ]
+    
+    # for idx, body in enumerate(bodies):
+    #     f = morpho.xyz_symmetry(body) + morpho.count_bricks_hinges(body) + \
+    #         morpho.calc_size_volume(body) + morpho.findLimbs(body) + [noses[idx]]
+        
+    return np.array(F)
     
 #TODO: Expand to import JSON
 with Session(dbengine) as ses:

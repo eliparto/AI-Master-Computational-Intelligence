@@ -78,9 +78,10 @@ class BodyCheck(Morpho):
         
         return coords
     
-    def findBBox(self, body: Body) -> tuple[int]:
+    def findBBox(self, body: Body) -> npt.NDArray[np.int_]:
         """
         Find a robot's bounding box.
+        Output tuples: (OFFSET_LEFT, OFFSET_RIGHT).
         """
         coords = self.findModules(body)
         xMax = np.max(coords[:,0])
@@ -90,7 +91,9 @@ class BodyCheck(Morpho):
         zMax = np.max(coords[:,2])
         zMin = np.min(coords[:,2])
         
-        return ((xMin, xMax), (yMin, yMax), (zMin, zMax))
+        return np.abs(np.array([
+            [xMin, xMax], [yMin, yMax], [zMin, zMax]
+            ]))
     
     def gridBody(self, body, coords) -> npt.NDArray[np.int_]:
         """
@@ -183,27 +186,35 @@ class BodyCheck(Morpho):
         if isinstance(population, Population):
             bodies = self.findBodies(population)
             noses = [p.nose for p in population.individuals]
-            assert -1 not in noses, "Nose orientations not correctly initialized. Call findNose(population)."
             
         elif isinstance(population, list):
             bodies = population
-            noses = ...
+            noses = self.findNose(bodies)
             
-            # TODO:L Finish nose implementation        
-        
-        bodies = self.findBodies(population)
+        assert -1 not in noses, "Nose orientations not correctly initialized. Call findNose(population)."
         for idx, body in enumerate(bodies):
-            nose = population.individuals[idx].nose
-            assert nose >= 0, "Nose not initialized. Call findNose() on population first."
-            self.plotFigs(body, nose, idx)
+            self.plotFigs(body, noses[idx], idx)
     
-    def findNose(self, population: Population) -> Population:
+    @overload
+    def findNose(self, population: Population) -> Population: ...
+    
+    @overload
+    def findNose(self, population: list[Body]) -> list[int]: ...
+    
+    def findNose(
+            self, population: Population) -> Union[Population, list[Body]]:
         """
         Find the `nose` (frontal orientation) of the robots. The nose is in the longest 
         x or y direction and the closest from the core (i.e. a salamander).
         This method ignores height in the z-direction.
+        TODO: Implement self.findBBox()
         """
-        bodies = self.findBodies(population)
+        if isinstance(population, Population):
+            bodies = self.findBodies(population)
+        elif isinstance(population, list):
+            bodies = population
+        
+        noses = []
         for idx, body in enumerate(bodies):
             grid = self.findModules(body)[:,:2]
             min_x = np.min(grid[:,0])
@@ -213,10 +224,14 @@ class BodyCheck(Morpho):
             width = max_x - min_x
             depth = max_y - min_y
             
-            population.individuals[idx].nose = self.noseLoc(
-                min_x, max_x, min_y, max_y, width, depth)
+            noses.append(self.noseLoc(
+                min_x, max_x, min_y, max_y, width, depth))
             
-        return population
+        if isinstance(population, Population):
+            for idx, p in enumerate(population.individuals):
+                p.nose = noses[idx]
+            return population
+        elif isinstance(population, list): return noses
     
     def noseLoc(self, min_x, max_x, min_y, max_y, w, d) -> int:
         """
@@ -239,6 +254,7 @@ class BodyCheck(Morpho):
     def xyz_symmetry(self, body: Body) -> list[float]:
         """
         Calculate a body's symmetry around its x-, y-, and z-axes.
+        TODO: Implement nose orientation
         """
         bboxes = self.findBBox(body)
         symmetries = [
@@ -261,22 +277,15 @@ class BodyCheck(Morpho):
         """
         # Calculate bounding box volume
         # Extract axis lengths from bounding boxes
-        ranges = self.findBBox(body)
-        lengths = [
-            np.abs(ax_range[1] - ax_range[0]) for ax_range in ranges
-            ]
-        # Prevent lengths of zero
-        for i in range(len(lengths)):
-            if lengths == 0: lengths[i] += 1
-        
+        lengths = np.sum(self.findBBox(body), axis=1)
+        lengths = np.clip(lengths, 1, 100) # Prevent side lengths of 0
         vol_bbox = lengths[0]*lengths[1]*lengths[2]
-        
-        # Calculate displacemed volume (assume 1 unit of displacement for every part)
+        # Calculate displacement volume (assume 1 unit of displacement for every part)
         vol_disp = len(self.findModules(body))
         
         return [vol_bbox, vol_disp, lengths[0], lengths[1], lengths[2]]
     
-    def find_limbs(self, body: Body) -> list[int, float]:
+    def findLimbs(self, body: Body) -> list[int, float]:
         """
         Find the no. of limbs and avg. limb length for a robot.
         """
@@ -313,9 +322,13 @@ class BodyCheck(Morpho):
     
                     if not any(c in visited for c in limb):
                         visited.update(limb)
-                        limb_lengths.append(len(limb) - 1)
-    
-        return [len(limb_lengths), limb_lengths]
+                        limb_lengths.append(len(limb) - 1)                  
+        
+        limb_count = len(limb_lengths)
+        avg_limb_len = 0
+        if len(limb_lengths) > 0: avg_limb_len = np.average(limb_lengths)
+            
+        return [limb_count, avg_limb_len]
                 
             
             
