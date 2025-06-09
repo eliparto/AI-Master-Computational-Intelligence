@@ -4,6 +4,8 @@ from BodyCheck import BodyCheck
 from collections import defaultdict
 import config_template as config
 import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
 from database_components import Experiment, Generation, Individual, Population, Genotype
 from sqlalchemy import select
@@ -36,11 +38,17 @@ def calcDiversity(genotypes: list[Genotype]) -> list[float]:
             [noses[idx]] for idx in range(len(bodies))
         ]
     
-    # for idx, body in enumerate(bodies):
-    #     f = morpho.xyz_symmetry(body) + morpho.count_bricks_hinges(body) + \
-    #         morpho.calc_size_volume(body) + morpho.findLimbs(body) + [noses[idx]]
+    # Normalize features (per column)
+    scaler = StandardScaler()
+    scaler.fit(F)
+    F_scaled = scaler.transform(F)
+    
+    # Perform PCA decomposition
+    pca = PCA()
+    F_pca = pca.fit_transform(F_scaled)
+    ellips_volume = np.prod(pca.explained_variance_)
         
-    return np.array(F)
+    return F, F_scaled, ellips_volume
     
 #TODO: Expand to import JSON
 with Session(dbengine) as ses:

@@ -279,11 +279,11 @@ class BodyCheck(Morpho):
         # Extract axis lengths from bounding boxes
         lengths = np.sum(self.findBBox(body), axis=1)
         lengths = np.clip(lengths, 1, 100) # Prevent side lengths of 0
-        vol_bbox = lengths[0]*lengths[1]*lengths[2]
+        vol_bbox = np.prod(lengths)
         # Calculate displacement volume (assume 1 unit of displacement for every part)
         vol_disp = len(self.findModules(body))
         
-        return [vol_bbox, vol_disp, lengths[0], lengths[1], lengths[2]]
+        return [vol_bbox, vol_disp]
     
     def findLimbs(self, body: Body) -> list[int, float]:
         """
