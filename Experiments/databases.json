@@ -1,7 +1,9 @@
 {
   "_Description": "Place the names of the relevant databases in the below field.",
   "Databases": [
-    "newstate_waypoints_short_1",
-    "newstate_waypoints_short_2"
+    "exp_inherit_2",
+    "exp_inherit_3",
+    "exp_inherit_4",
+    "exp_inherit_5"
   ]
 }
