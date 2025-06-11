@@ -49,7 +49,7 @@ class BrainOptimizerDE(Learner):
         bodies, brains, solution_sizes = self.setupLearner(population)
         # Choose inherited or randomly initialized weights
         if self.inherit: population = self.setSolutionSizes(population, solution_sizes)
-        else: population = self.initialSolutions(population)
+        else: population = self.initialSolutionsChildren(population)
         
         # Learning loop
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
@@ -222,13 +222,26 @@ class BrainOptimizerDE(Learner):
         """
         Generate random weights for the initial population.
         """
-
         _, _, sol_sizes = self.setupLearner(population)
         
         for idx, sol_size in enumerate(sol_sizes):
             population.individuals[idx].solutions = np.random.uniform(
                 low=-1.0, high=1.0, size=sol_size*3).tolist()
             
+        return population
+    
+    def initialSolutionsChildren(
+            self, population: Population) -> Population:
+        """
+        Generate new solution vectors for children only.
+        """
+        _, _, sol_sizes = self.setupLearner(population)
+        
+        for idx, sol_size in enumerate(sol_sizes):
+            if population.individuals[idx].solutions == []:
+                population.individuals[idx].solutions = np.random.uniform(
+                    low=-1.0, high=1.0, size=sol_size*3).tolist()
+                
         return population
     
     def setSolutionSizes(
@@ -241,7 +254,6 @@ class BrainOptimizerDE(Learner):
         :param children: Population of children.
         :param sol_sizes: Correct sizes of the solution vectors.
         """
-        
         for idx, sol_size in enumerate(sol_sizes):
             if sol_size == 0: continue # Robots with no connections are skipped in learn()
             solutions = children.individuals[idx].solutions
