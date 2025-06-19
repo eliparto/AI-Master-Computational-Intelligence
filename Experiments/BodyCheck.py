@@ -125,6 +125,7 @@ class BodyCheck(Morpho):
         ax.set_ylim(10,30)
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.text(20, 19, "c", ha="center", va="center", c="red")
         cbar = ax.figure.colorbar(im, ax=ax, orientation="horizontal",
                                   shrink=0.8)
         cbar.set_label("No. of modules")

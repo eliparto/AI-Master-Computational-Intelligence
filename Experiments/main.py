@@ -69,7 +69,8 @@ def run_experiment(
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
     crossover_reproducer = CrossoverReproducer(
-        rng=rng, innov_db_body=innov_db_body, innov_db_brain=innov_db_brain
+        rng=rng, inherit=inherit,
+        innov_db_body=innov_db_body, innov_db_brain=innov_db_brain
     )
     
     modular_robot_evolution = ModularRobotEvolution(

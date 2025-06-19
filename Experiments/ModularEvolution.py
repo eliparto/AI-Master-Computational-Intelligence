@@ -163,6 +163,7 @@ class CrossoverReproducer(Reproducer):
     def __init__(
         self,
         rng: np.random.Generator,
+        inherit: bool,
         innov_db_body: multineat.InnovationDatabase,
         innov_db_brain: multineat.InnovationDatabase,
     ) -> None:
@@ -170,10 +171,12 @@ class CrossoverReproducer(Reproducer):
         Initialize the reproducer.
 
         :param rng: The random generator.
+        :param inherit: Bool to inherit knowledge from parents.
         :param innov_db_body: The innovation database for the body.
         :param innov_db_brain: The innovation database for the brain.
         """
         self.rng = rng
+        self.inherit = inherit
         self.innov_db_body = innov_db_body
         self.innov_db_brain = innov_db_brain
 
@@ -208,7 +211,9 @@ class CrossoverReproducer(Reproducer):
                 ]
             )
         
-        children = self.insertSolution(children, parent_population, parentPairs)
+        # Inherit knowledge from parent if prompted to
+        if self.inherit: children = self.insertSolution(
+                children, parent_population, parentPairs)
         
         return children
     

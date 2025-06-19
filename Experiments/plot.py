@@ -12,9 +12,20 @@ from sqlalchemy import select
 import argparse
 
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
-from revolve2.experimentation.logging import setup_logging
 
-def plotFitness(df, name, figName):
+# Manually adjust font size globally
+plt.rcParams.update({
+    "font.size": 10,         # Default text size
+    "axes.titlesize": 35,    # Title font size
+    "axes.labelsize": 35,    # Axis label size
+    "xtick.labelsize": 30,   # Tick label size
+    "ytick.labelsize": 30,
+    "legend.fontsize": 30,
+    "figure.titlesize": 35,
+    "figure.figsize": (15,12)
+})
+
+def plotFitness(df, name, figName, fMax, fMin):
     agg_per_experiment_per_generation = (
         df.groupby(["experiment_id", "generation_index"])
         .agg({name: ["max", "mean"]})
@@ -48,6 +59,7 @@ def plotFitness(df, name, figName):
         agg_per_generation["max_fitness_mean"],
         label="Max fitness",
         color="b",
+        lw=4,
     )
     plt.fill_between(
         agg_per_generation["generation_index"],
@@ -63,6 +75,7 @@ def plotFitness(df, name, figName):
         agg_per_generation["mean_fitness_mean"],
         label="Mean fitness",
         color="r",
+        lw=4,
     )
     plt.fill_between(
         agg_per_generation["generation_index"],
@@ -77,7 +90,12 @@ def plotFitness(df, name, figName):
     title = f"Mean and max {name} across repetitions with std as shade"
     if figName != "": title += ("\n" + figName)
     plt.xlabel("Generation index")
-    plt.ylabel("Fitness\n(no. of targets reached)")
+    plt.ylabel("Fitness (no. of targets reached)")
+    ax = plt.gca()
+    #ax.set_xlim(0, config.NUM_GENERATIONS_BODY)
+    ax.set_xlim(0,10) # Temporary
+    ax.set_ylim(fMin, fMax)
+    plt.grid(which="major", axis="both")
     plt.title(title)
     plt.legend()
 
@@ -87,6 +105,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Plot the max and mean fitnesses for an experiment.")
     parser.add_argument("-name", type=str, help="Specify the input database's filename.")
     parser.add_argument("-figName", type=str, help="Specify custom figure title.")
+    parser.add_argument("-fMax", type=float, help="Specify the max value of the y (fitness) axis.", default=3.0)
+    parser.add_argument("-fMin", type=float, help="Specify the min value of the y (fitness) axis.", default=-10.0)
     args = parser.parse_args()
     
     if args.name:
@@ -109,7 +129,7 @@ def main() -> None:
 
         if args.figName: figName = args.figName
         else: figName = ""
-        plotFitness(df, "fitness", figName)
+        plotFitness(df, "fitness", figName, args.fMax, args.fMin)
         plt.show()
         
     else: print("Pass database name with '-name'. Closing now.")

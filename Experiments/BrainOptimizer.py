@@ -47,9 +47,9 @@ class BrainOptimizerDE(Learner):
         """
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
-        # Choose inherited or randomly initialized weights
-        if self.inherit: population = self.setSolutionSizes(population, solution_sizes)
-        else: population = self.initialSolutionsChildren(population)
+        # Initialize child weights if inheritance is NOT chosen
+        if not self.inherit: population = self.initialSolutionsChildren(population)
+        population = self.setSolutionSizes(population, solution_sizes)
         
         # Learning loop
         for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
