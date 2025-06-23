@@ -5,7 +5,9 @@ import math
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from pyrr import Quaternion, Vector3
+from typing import Union
 
 from revolve2.modular_robot import ModularRobot
 from revolve2.modular_robot.body.base import ActiveHinge, Body
@@ -19,9 +21,21 @@ from revolve2.simulators.mujoco_simulator import LocalSimulator
 from revolve2.standards import terrains
 from revolve2.standards.simulation_parameters import make_standard_batch_parameters
 from revolve2.simulation.scene.geometry import GeometryPlane, GeometrySphere
-from revolve2.simulation.scene import AABB, Color, Pose
+from revolve2.simulation.scene import Color, Pose
 from revolve2.simulation.scene.vector2 import Vector2
 from revolve2.simulators.mujoco_simulator.textures import Flat
+
+# Manually adjust font size globally
+plt.rcParams.update({
+    "font.size": 10,         # Default text size
+    "axes.titlesize": 35,    # Title font size
+    "axes.labelsize": 35,    # Axis label size
+    "xtick.labelsize": 30,   # Tick label size
+    "ytick.labelsize": 30,
+    "legend.fontsize": 25,
+    "figure.titlesize": 35,
+    "figure.figsize": (15,12)
+})
 
 class Evaluator:
     """Provides evaluation of robots."""
@@ -234,6 +248,61 @@ class Evaluator:
         plt.legend()
         plt.show()
         
+    def plotMulti(
+            self, routes: npt.NDArray[np.float_], 
+            figName: Union[None, str] = None
+            ) -> None:
+        """
+        Plot multiple trajectories.
+        
+        :param routes: Trajectory coordinates from the best-performing robots.
+        :param figName: [Optional] Figure title addition.
+        """
+        assert len(routes) > 1, ">1 trajectories required."
+        
+        fig, ax = plt.subplots(figsize=(9,11))
+
+        # 1. Plot target background circles first (lowest layer)
+        for c in config.TARGETS:
+            circle = plt.Circle(c, radius=0.25,
+                                facecolor="pink", edgecolor="red", lw=2, zorder=1)
+            ax.add_patch(circle)
+        
+        # 2. Plot target points
+        x_t = config.TARGETS[:, 0]
+        y_t = config.TARGETS[:, 1]
+        ax.scatter(x_t, y_t, c="r", s=200, marker="1", label="Targets", zorder=5)
+        
+        # 3. Plot all but the best route
+        for route in routes[1:]:
+            x = route[:, 0]
+            y = route[:, 1]
+            ax.plot(x, y, c="coral", lw=8, alpha=0.4, zorder=30)
+        
+        # 4. Plot best route
+        x = routes[0][:, 0]
+        y = routes[0][:, 1]
+        ax.plot(x, y, c="gray", lw=7, alpha=0.5, zorder=35)
+        plt.scatter(x, y, c=np.linspace(0, config.SIM_TIME, len(x)), s=60, zorder=40)
+        
+        # 5. Start position
+        ax.scatter(0, 0, c="deeppink", marker="X", s=800, label="Start pos", zorder=50)
+        
+        # Final adjustments
+        title = "Robot trajectories"
+        if figName != None: title += ("\n" + figName)
+        plt.title(title)
+        ax.set_aspect("equal")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.set_xlim([-1,2])
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.grid(visible=True, axis="both", ls="--")
+        plt.colorbar(label="Time [s]")
+        ax.legend()
+        plt.show()
+
     def genTerrain(self) -> Terrain:
         """
         Generate terrain with targets for rerun visualization.

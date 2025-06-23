@@ -138,18 +138,25 @@ def main() -> None:
             fitnesses.append(fitness)
             trajectories.append(coords)
         
-        # Convert to np arrays and sort 4by training fitness
+        # Convert to np arrays and sort by training fitness
         # Rerun fitness might differ due to simulator synchronization mismatches
         simFitnesses = np.array(simFitnesses)
         fitnesses = np.array(fitnesses)
         trajectories = np.array(trajectories)
+        # Reshape trajectory array
+        tr = trajectories.shape
+        trajectories = np.reshape(trajectories, (tr[0], tr[2], tr[3]))
+        # Sort by fitness (descending)
         idx = np.flip(np.argsort(simFitnesses))
+        trajectories = trajectories[idx]
         
-        print(simFitnesses[idx])
+        print("Simulation results:")
+        print(f"Training:\n{simFitnesses[idx]}\n")
+        print(f"Rerun:\n{fitnesses[idx]}\n")
+        print("Sorted by fitness (rerun):")
         print(fitnesses[idx])
-        
-        evaluator.plotMulti(
-            data = trajectories[:args.n], figName = args.figName)
+        # Plot n best individuals
+        evaluator.plotMulti(routes=trajectories[:args.n], figName=args.figName)
         
     else: print("Pass database name with '-name'. Closing now.")
 
