@@ -1,4 +1,4 @@
-"""Rerun the n best robot between all combined experiments."""
+"""Calculate diversity and novelty metrics over populations."""
 
 import config
 import json
@@ -15,6 +15,7 @@ import numpy.typing as npt
 import pandas as pd
 from BodyCheck import BodyCheck
 from sklearn.neighbors import NearestNeighbors
+from matplotlib import pyplot as plt
 
 from revolve2.experimentation.database import OpenMethod, open_database_sqlite
 from revolve2.modular_robot.body.base import ActiveHinge
@@ -67,16 +68,14 @@ def extract(dbName: str) -> list[Row]:
     
     return experiments
 
-def morphVect(gens: list[list[Genotype]]) -> npt.NDArray[np.float_]:
+def morphVect(exp: list[list[Genotype]]) -> npt.NDArray[np.float_]:
     """
     Generate morphological feature vectors.
-    :param gen: list of population genotypes per generation.
+    :param exp: An experiment -> list containing genotypes for all its generations.
     """
     morpho = BodyCheck()
-    print("Generating morpho feature vectors..")
-    
     allFeatures = []
-    for gen in tqdm(gens, leave = True):
+    for gen in tqdm(exp, leave=False, position=1):
         bodies = [g.develop().body for g in gen]
         xyz_sym = [morpho.xyz_symmetry(body) for body in bodies]
         noses = np.array(morpho.findNose(bodies))
@@ -105,12 +104,71 @@ def morphVect(gens: list[list[Genotype]]) -> npt.NDArray[np.float_]:
         
     return np.array(allFeatures)
 
-def KNNdiversity(gen: list[Genotype]) -> pd.DataFrame:
+def KNNdiversity(exp: list[list[Genotype]]) -> float:
     """
-    Generate a dataframe containing the diversity per generation of an experiment.
+    Determine a generations diversity metric.
+    Diversity is expressed by the average distance to the k nearest neighbors
+    for all individuals in a population.
     :param gen: list of population genotypes per generation.
     """
-    ...
+    # Generate tensor of morpho feature matrices per generation
+    gens = morphVect(exp)
+    
+    # Calculate diversity using kNN distances per generation
+    divs = []
+    for gen in gens:
+        knn = NearestNeighbors(
+            n_neighbors=int(np.floor(np.sqrt(config.POPULATION_SIZE_BODY)))+1,
+            algorithm="auto",
+            metric="euclidean"
+            )
+        
+        knn.fit(gen)
+        dist, _ = knn.kneighbors(gen, return_distance=True)
+        avg_dist = np.average(dist[:,1:], axis=1) # Remove distances to self
+        
+        # Diversity: Average distance of average distances
+        div = np.average(avg_dist)
+        divs.append(div)
+        
+    return np.array(divs)
+
+def calcDiversity(exps: list[list[list[Genotype]]]) -> npt.NDArray[np.float_]:
+    """
+    Calculate diversities over all experiments.
+    """
+    diversities = []
+    for exp in tqdm(exps, leave=True, position=0):
+        diversities.append(KNNdiversity(exp))
+        
+    diversities = np.array(diversities)
+    div_avg = np.average(diversities, axis=0)
+    div_std = np.std(diversities, axis = 0)
+    
+    return div_avg, div_std
+
+def plotDiv(
+        avg_1: npt.NDArray[np.float_], std_1: npt.NDArray[np.float_],
+        avg_2: npt.NDArray[np.float_], std_2: npt.NDArray[np.float_]
+        ) -> None:
+    """
+    Plot the mean and std shaded diversities.
+    """
+    plt.plot(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), avg_1, 
+             c="lightblue", lw=4)
+    plt.fill_between(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), 
+                     avg_1-std_1, avg_1+std_1, color="lightblue", alpha=0.4)
+    
+    plt.plot(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), avg_2, 
+             c="orange", lw=4)
+    plt.fill_between(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), 
+                     avg_2-std_2, avg_2+std_2, color="orange", alpha=0.25)
+    
+    plt.grid()
+    plt.xlabel("Generation index")
+    plt.ylabel("Diversity")
+    plt.xlim([0,config.NUM_GENERATIONS_BODY+1])
+    plt.ylim([0,1])
 
 def main() -> None:
     """Perform the rerun."""
