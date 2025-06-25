@@ -15,6 +15,7 @@ import numpy.typing as npt
 import pandas as pd
 from BodyCheck import BodyCheck
 from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import distance
 from matplotlib import pyplot as plt
 from typing import Union
 
@@ -118,11 +119,10 @@ def morphVect(exp: list[list[Genotype]]) -> npt.NDArray[np.float_]:
         
     return np.array(allFeatures)
 
-def KNNdiversity(exp: Union[list[list[Genotype]], None],
-                 k: int, vectors: Union[npt.NDArray[np.float_], None] = None, 
-                 generate: bool = True) -> float:
+def KNNdiversity(gens: npt.NDArray[np.float_], k: int
+                 ) -> npt.NDArray[np.float_]:
     """
-    Determine a generations diversity metric.
+    Determine a generation's diversity metric.
     Diversity is expressed by the average distance to the k nearest neighbors
     for all individuals in a population.
     :param gen: list of population genotypes per generation.
@@ -130,10 +130,6 @@ def KNNdiversity(exp: Union[list[list[Genotype]], None],
     :param generate: Set True to generate morphological feature vectors.
     :param vectors: (Optional) array of morhpological feature vectors to bypass vector generation.
     """
-    # Generate tensor of morpho feature matrices per generation if prompted
-    if generate: gens = morphVect(exp)
-    else: gens = vectors
-    
     # Calculate diversity using kNN distances per generation
     divs = []
     for gen in gens:
@@ -153,35 +149,56 @@ def KNNdiversity(exp: Union[list[list[Genotype]], None],
         
     return np.array(divs)
 
-def optimizeK(
-        k_vals: list[int], f_tensor = npt.NDArray[np.float_]
-        ) -> list[float]:
+def KNNnovelty_longterm(gens: npt.NDArray[np.float_], k:int
+                 ) -> npt.NDArray[np.float_]:
     """
-    Simple 1-D grid search optimizer for the k-value.
-    :param exps: List of all experiments within a database.
-    :param k_vals: List of k-values to try.
-    :param vectors: Tensor containing enerated morphological feature vectors.
+    Determine a generation's historic novelty metric.
+    Novelty is expressed as the average distance from a population at generation g
+    to an archive of populations from generation 0 to generation g-1.
     """
-    k_results = []
-    for k in k_vals:
-        diversities = []
-        for f_matrix in f_tensor: # ~> for exp in exps
-            diversities.append(
-                KNNdiversity(
-                    exp=None, k=k, vectors=f_matrix, 
-                    generate=False))
-            
-        diversities = np.array(diversities)
-        div_avg = np.average(diversities, axis=0)
-        div_std = np.std(diversities, axis = 0)
+    # Calculate novelty using archive of gen 0 to g-1
+    novelties = []
+    for gen_idx, gen in enumerate(gens[1:]):
+        # Create archive of features till previous generation
+         archive = np.concatenate(gens[0:gen_idx+1])
+         # Calculate distances from current gen to archive
+         all_dist = distance.cdist(gen, archive, metric="euclidean")
+         # Sort and choose k nearest neighbors
+         all_dist = np.sort(all_dist)[:,:k]
+         # Average per individual, then average over population
+         all_dist = np.average(all_dist, axis=1)
+         novelty = np.average(all_dist)
+         novelties.append(novelty)
+         
+    return np.array(novelties)
+         
+def KNNnovelty_shortterm(gens: npt.NDArray[np.float_], k:int
+                 ) -> npt.NDArray[np.float_]:
+    """
+    Determine a generations short-term novelty compared to the previous generation.
+    """
+    ...
+
+def calcNovelty(exps: npt.NDArray[np.float_], k:int, longterm=True,
+                ) -> npt.NDArray[np.float_]:
+    """
+    Calculate novelties over all experiments.
+    :param lognterm: Toggle between long-term and short-term novelty.
+    """
+    if longterm: knnNovelty = KNNnovelty_longterm
+    else: knnNovelty = KNNnovelty_shortterm
+    novelties = []
+    for exp in exps:
+        novelties.append(knnNovelty(exp, k))
         
-        k_results.append([div_avg, div_std])
-                        
-    return k_results
+    novelties = np.array(novelties)
+    nov_avg = np.average(novelties, axis=0)
+    nov_std = np.std(novelties, axis=0)
     
-def calcDiversity(
-        exps: list[list[list[Genotype]]], k: int,
-        ) -> npt.NDArray[np.float_]:
+    return nov_avg, nov_std
+        
+def calcDiversity(exps: npt.NDArray[np.float_], k: int,
+                  ) -> npt.NDArray[np.float_]:
     """
     Calculate diversities over all experiments.
     """
@@ -195,28 +212,28 @@ def calcDiversity(
     
     return div_avg, div_std
 
-def plotDiv(
-        avg_1: npt.NDArray[np.float_], std_1: npt.NDArray[np.float_],
+def plotSingle(
+        avg: npt.NDArray[np.float_], std: npt.NDArray[np.float_],
         figName: Union[str, None],
         ) -> None:
     """
     Plot the mean and std shaded diversities for a single experiment.
     """
     plt.figure()
-    plt.plot(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), avg_1, 
+    plt.plot(np.arange(0,len(avg),1), avg, 
              c="pink", lw=4)
-    plt.fill_between(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), 
-                     avg_1-std_1, avg_1+std_1, color="pink", alpha=0.4)
+    plt.fill_between(np.arange(0,len(avg),1), 
+                     avg-std, avg+std, color="pink", alpha=0.4)
     
     if figName != None: plt.title(figName)
     plt.grid()
     plt.xlabel("Generation index")
     plt.ylabel("Diversity")
-    plt.xlim([0,config.NUM_GENERATIONS_BODY])
+    plt.xlim([0,len(avg)])
     plt.ylim([0,1])
     plt.show()
 
-def plotDivCompare(
+def plotCompare(
         avg_1: npt.NDArray[np.float_], std_1: npt.NDArray[np.float_],
         avg_2: npt.NDArray[np.float_], std_2: npt.NDArray[np.float_],
         figName: Union[str, None] = None,
@@ -224,6 +241,7 @@ def plotDivCompare(
     """
     Plot the mean and std shaded diversities for two experiments.
     Pass warm start vars first.
+    TODO: Alter for novelty plotting -> start generation index at 1 and custom colors
     """
     plt.figure()
     plt.plot(np.arange(0,config.NUM_GENERATIONS_BODY+1,1), avg_2, 
@@ -258,53 +276,63 @@ def main() -> None:
     parser.add_argument("-figName", type=str, default = None, help="Specify figure title.")
     parser.add_argument("-div", action="store_true", help="Plot diversities")
     parser.add_argument("-nov", action="store_true", help="Plot novelties")
+    parser.add_argument("-df", action="store_true", help="Output diversity and novelty dataframes")
+    parser.add_argument("-dataName", type=str, default = None, help="Specify dataframe name.")
     args = parser.parse_args()
     
-    # Import JSON file containing database names
-    dbLists = [args.db1 + ".json", args.db2 + ".json"]
-    conditions = []
-    for dbList in dbLists:
-        with open(dbList, 'r') as file:
-            dbFile = json.load(file)    
-        dbs = dbFile.get("Databases", [])
-        assert len(dbs) > 0, "Need to import at least 2 databases to combine."
-        # Extract data from all experiments
-        allExps = []
-        for db in dbs:
-            dbName = "Databases/" + db + ".sqlite"
-            exps = extract(dbName)
-            allExps += exps
+    do = False # TODO: TEMPORARY
+    if do:
+    
+        # Import JSON file containing database names
+        dbLists = [str(args.db1) + ".json", str(args.db2) + ".json"]
+        conditions = []
+        for dbList in dbLists:
+            with open(dbList, 'r') as file:
+                dbFile = json.load(file)    
+            dbs = dbFile.get("Databases", [])
+            assert len(dbs) > 0, "Need to import at least 2 databases to combine."
+            # Extract data from all experiments
+            allExps = []
+            for db in dbs:
+                dbName = "Databases/" + db + ".sqlite"
+                exps = extract(dbName)
+                allExps += exps
+                
+            conditions.apppend(allExps)
             
-        conditions.apppend(allExps)
+        # Generate morphological feature vectors/tensors
+        tensor_warm = np.array([
+            morphVect(exp) for exp in conditions[0]
+            ])
+        tensor_cold = np.array([
+            morphVect(exp) for exp in conditions[1]
+            ])
         
-    # Generate morphological feature vectors/tensors
-    tensor_warm = np.array([
-        morphVect(exp) for exp in conditions[0]
-        ])
-    tensor_cold = np.array([
-        morphVect(exp) for exp in conditions[1]
-        ])
-    
-    # Calculate and plot diversities
-    if args.div:
-        div_warm = []
-        div_cold = []
-        for f_matrix in tensor_warm:
-            div_warm.append(KNNdiversity(exp=f_matrix, k=k))
-        for f_matrix in tensor_cold:
-            div_cold.append(KNNdiversity(exp=f_matrix, k=k))
+        # Calculate and plot diversities
+        if args.div:
+            div_warm = []
+            div_cold = []
+            for f_matrix in tensor_warm:
+                div_warm.append(KNNdiversity(exp=f_matrix, k=k))
+            for f_matrix in tensor_cold:
+                div_cold.append(KNNdiversity(exp=f_matrix, k=k))
+            
+            div_warm = np.array(div_warm)
+            div_cold = np.array(div_cold)
+            div_warm_avg = np.average(div_warm, axis=0)
+            div_warm_std = np.std(div_warm, axis = 0)
+            div_cold_avg = np.average(div_cold, axis=0)
+            div_cold_std = np.std(div_cold, axis = 0)
+            
+            plotDivCompare(div_warm_avg, div_warm_std, div_cold_avg, div_cold_std)
         
-        div_warm = np.array(div_warm)
-        div_cold = np.array(div_cold)
-        div_warm_avg = np.average(div_warm, axis=0)
-        div_warm_std = np.std(div_warm, axis = 0)
-        div_cold_avg = np.average(div_cold, axis=0)
-        div_cold_std = np.std(div_cold, axis = 0)
-        
-        plotDivCompare(div_warm_avg, div_warm_std, div_cold_avg, div_cold_std)
-    
-    if args.nov:
-        ...
+        # Calculate and plot novelties
+        if args.nov:
+            ...
+            
+        if args.df:
+            assert args.div and args.nov == True, "Toggle diversity and novelty calculations."
+            ...
 
 if __name__ == "__main__":
     main()
