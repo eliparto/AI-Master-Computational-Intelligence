@@ -128,9 +128,8 @@ class BodyCheck(Morpho):
         
         return grid
     
-    def show2D(self, body: Body, show: bool = True, 
-               nameOut: Union[str, None] = None, 
-               figTitle: Union[str, None] = None) -> None:
+    def show2D(self, body: Body, nameOut: Union[str, None] = None, 
+               figTitle: Union[str, None] = None, save: bool = False) -> None:
         """
         Visualize a body from a 2D top-down perspective.
         """
@@ -165,15 +164,13 @@ class BodyCheck(Morpho):
         ax.set_xlim(x_lim)
         ax.set_ylim(y_lim)
         ax.axis('off')
+        ax.grid(visible=True, axis="both")
         
         if figTitle != None:
             plt.title(figTitle)
         
-        if show: plt.show()
-        else: 
-            if nameOut == None: nameOut = "temp.png"
-            else: nameOut = nameOut + ".png" 
-            plt.savefig(nameOut)
+        if save: plt.savefig(nameOut)
+        plt.show()
     
     def joint_patch(self, center, width=0.5, height=0.5, thickness=0.05, color='silver'):
         x, y = center
