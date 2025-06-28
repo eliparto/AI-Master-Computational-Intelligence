@@ -3,6 +3,8 @@
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.patches import Polygon
 from database_components import (
     Base,
     Experiment,
@@ -28,7 +30,7 @@ class BodyCheck(Morpho):
         self.marker = ["s", "^", "o"]
         self.sizes = [20, 20, 50]
         
-        self.epsilon = 0.00001 # Prevent division errors w/ bboxes
+        self.epsilon = 1e-9 # Prevent division errors w/ bboxes
         
     def findBodies(self, population: Population) -> list[Body]:
         """
@@ -51,7 +53,22 @@ class BodyCheck(Morpho):
             ]).astype(int)
         
         return coords
-                
+    
+    def findHingeOrientations(self, body: Body) -> list[int]:
+        """
+        Find the orientations of hinges in a robot (0/1 denote rotation by 0 or 90 degrees.).
+        """
+        hinges = body.find_modules_of_type(ActiveHinge)
+        orientations = np.array([
+            np.array(
+                self.quaternion_to_euler(hinge.orientation)
+                ) for hinge in hinges
+            ])[:,-1]
+        
+        orientations = np.round(orientations/np.pi, 1)
+        
+        return orientations
+        
     def findModulesSep(
             self, body: Body
             ) -> list[list[Brick], list[ActiveHinge], list[Core]]:
@@ -78,10 +95,11 @@ class BodyCheck(Morpho):
         
         return coords
     
-    def findBBox(self, body: Body) -> npt.NDArray[np.int_]:
+    def findBBox(self, body: Body, offset: bool = True) -> npt.NDArray[np.int_]:
         """
         Find a robot's bounding box.
-        Output tuples: (OFFSET_LEFT, OFFSET_RIGHT).
+        :param offset: Toggle to return the absolute of the bounding box,
+        returning the offsets w.r.t. axis centers.
         """
         coords = self.findModules(body)
         xMax = np.max(coords[:,0])
@@ -91,9 +109,12 @@ class BodyCheck(Morpho):
         zMax = np.max(coords[:,2])
         zMin = np.min(coords[:,2])
         
-        return np.abs(np.array([
+        bbox = np.array([
             [xMin, xMax], [yMin, yMax], [zMin, zMax]
-            ]))
+            ])
+        
+        if offset: return np.abs(bbox)
+        else: return bbox 
     
     def gridBody(self, body, coords) -> npt.NDArray[np.int_]:
         """
@@ -106,6 +127,99 @@ class BodyCheck(Morpho):
             grid[c[0],c[1]] += 1
         
         return grid
+    
+    def show2D(self, body: Body, show: bool = True, 
+               nameOut: Union[str, None] = None, 
+               figTitle: Union[str, None] = None) -> None:
+        """
+        Visualize a body from a 2D top-down perspective.
+        """
+        fig, ax = plt.subplots()
+        ax.set_aspect("equal", adjustable="box")
+    
+        bricks, joints, _ = self.findModulesSep(body)
+        jointAngles = self.findHingeOrientations(body)
+        x_lim, y_lim, _ = self.findBBox(body, offset=False)
+        x_lim[0] -= 1
+        x_lim[1] += 1
+        y_lim[0] -= 1
+        y_lim[1] += 1
+        
+        for joint, angle in zip(joints, jointAngles):
+            patch = self.joint_patch(center=(joint[0], joint[1]))
+            ax.add_patch(patch)
+            ax.add_patch(
+                patches.Circle(
+                    (joint[0], joint[1]), radius=0.15, color="silver"))
+        for brick in bricks:
+            patch = self.brick_patch(center=(brick[0], brick[1]))
+            ax.add_patch(patch)
+            ax.add_patch(
+                patches.Rectangle(
+                    (brick[0]-0.4, brick[1]-0.4), width=0.8, height=0.8, color='skyblue'))
+        ax.add_patch(
+            patches.Circle(
+                (1.0, 0), radius=0.5, color="hotpink"))
+ 
+        ax.set_aspect('equal')
+        ax.set_xlim(x_lim)
+        ax.set_ylim(y_lim)
+        ax.axis('off')
+        
+        if figTitle != None:
+            plt.title(figTitle)
+        
+        if show: plt.show()
+        else: 
+            if nameOut == None: nameOut = "temp.png"
+            else: nameOut = nameOut + ".png" 
+            plt.savefig(nameOut)
+    
+    def joint_patch(self, center, width=0.5, height=0.5, thickness=0.05, color='silver'):
+        x, y = center
+        w = width/2
+        h = height/2
+        t = thickness / 1
+    
+        # Create a plus by combining horizontal and vertical rectangles
+        verts = [
+            (x - t, y + h), (x + t, y + h),
+            (x + t, y + t), (x + w, y + t),
+            (x + w, y - t), (x + t, y - t),
+            (x + t, y - h), (x - t, y - h),
+            (x - t, y - t), (x - w, y - t),
+            (x - w, y + t), (x - t, y + t)
+        ]
+
+        return Polygon(verts, closed=True, color=color)
+    
+    def brick_patch(self, center, size=1.0, thickness=0.1, color='skyblue'):
+        x, y = center
+        s = size / 2
+        t = thickness / 1
+    
+        # Create a plus by combining horizontal and vertical rectangles
+        verts = [
+            (x - t, y + s), (x + t, y + s),
+            (x + t, y + t), (x + s, y + t),
+            (x + s, y - t), (x + t, y - t),
+            (x + t, y - s), (x - t, y - s),
+            (x - t, y - t), (x - s, y - t),
+            (x - s, y + t), (x - t, y + t)
+        ]
+
+        return Polygon(verts, closed=True, color=color)
+    
+    def quaternion_to_euler(self, q) -> tuple[float]:
+        """
+        Convert quaterion data into angles about roll, pitch, and yaw axes.
+        """
+        w, x, y, z = q
+        roll = np.arctan2(2*(w*x + y*z), 1 - 2*(x*x + y*y))
+        pitch = np.arcsin(2*(w*y - z*x))
+        yaw = np.arctan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+    
+        return roll, pitch, yaw  # Angles in radians
     
     def plot2D(self, body, idx, plt_out=False, ax=None) -> None:
         """
