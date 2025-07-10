@@ -56,6 +56,7 @@ class Evaluator:
         targets: npt.NDArray[np.float_],
         nose: int,
         waypointTerrain: bool = False,
+        record: bool = False,
     ) -> None:
         """
         Initialize this object.
@@ -68,6 +69,7 @@ class Evaluator:
         :param targets: List of xy-coordinates of targets for the robot to navigate towards.
         :param nose: Frontal (nose) orientation of the robot.
         :param waypointTerrain: True to render waypoints in simulator (for rerun.py).
+        :param record: True to record simulation.
         """
         self._simulator = LocalSimulator(
             viewer_type = "native", headless=headless, num_simulators=num_simulators
@@ -209,14 +211,16 @@ class Evaluator:
         
     def plotTrajectory(
             self, coords: list[npt.NDArray[np.float_]], 
-            targets: npt.NDArray[np.float_], plotTitle: str
+            targets: npt.NDArray[np.float_],
+            plotTitle: str = "", demo: bool = False,
             ) -> None:
         """
         Plot a robot's trajectory.
         TODO: Implement drawing (un)reached targets.
         ONLY USE TO PLOT ONE SOLUTION OF A ROBOT
+        :param demo: Remove colorbar for empty plot
         """
-        title=f"Targets: {targets[0]}  {targets[1]}  {targets[2]}"
+        if not demo: title=f"Targets: {targets[0]}  {targets[1]}  {targets[2]}"
         if plotTitle != "": title = plotTitle + "\n" + title
         coords = coords[0]
         x_r = coords[:,0]
@@ -231,18 +235,18 @@ class Evaluator:
             circle = plt.Circle(targets[i], radius=0.25,
                                 facecolor="pink", edgecolor="red")
             ax.add_patch(circle)    
-        plt.scatter(x_t, y_t, c="r", marker="1", s=50, label="Targets")
+        plt.scatter(x_t, y_t, c="r", marker="1", s=200, label="Targets")
         # Robot trajectory
         plt.plot(np.array(x_r), np.array(y_r), c="gray", alpha=0.4)
         plt.scatter(x_r, y_r, c=np.linspace(0,10,len(x_r)), s=20)
         # Start position
-        plt.scatter(0, 0, c="orange", marker="x", s=120, label="Start pos")
+        plt.scatter(0, 0, c="deeppink", marker="X", s=800, label="Start pos")
         # Appearance
         plt.grid(visible=True, axis="both", ls="--")
         plt.title("Robot trajectory\n" + title)
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.colorbar(label="Time")
+        if not demo: plt.colorbar(label="Time")
         plt.gca().set_aspect("equal")
         ax.set_xlim([-1,2])
         plt.legend()
@@ -318,15 +322,17 @@ class Evaluator:
             ]
         
         # Waypoint spheres
+        targets = config.TARGETS
+        targets = targets*-1
         targetSpheres = [
             GeometrySphere(
                 pose=Pose(
-                    position=Vector3([t[0], t[1], -0.22]), orientation=Quaternion()
+                    position=Vector3([t[0], t[1], -0.98]), orientation=Quaternion()
                     ),
                 mass=0.0,
-                radius=0.25,
+                radius=1.0,
                 texture=Flat(primary_color=Color(255, 0, 200, 255)),
-                ) for t in config.TARGETS
+                ) for t in targets
             ]
         
         static_geometry += targetSpheres

@@ -1,3 +1,5 @@
+""" Generate dataframes for statistical analysis (mean and max fitnesses). """
+
 import numpy as np
 import pandas as pd
 from pandas import DataFrame

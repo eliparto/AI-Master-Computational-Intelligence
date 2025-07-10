@@ -17,6 +17,7 @@ from revolve2.modular_robot.body.base import ActiveHinge
 from revolve2.modular_robot.brain.cpg import (
     active_hinges_to_cpg_network_structure_neighbor,
 )
+from BodyCheck import BodyCheck
 
 def extract(dbName: str) -> list[Row]:
     """
@@ -67,7 +68,7 @@ def extract(dbName: str) -> list[Row]:
             ] for i in range(1, len(rows_by_experiment_and_generation)+1)
         ]
 
-    # Extract bets performing genotypes and solutions per experiment
+    # Extract best performing genotypes and solutions per experiment
     robots = [
         [
             e[-1][i][-1] for i in range(4)
@@ -157,6 +158,11 @@ def main() -> None:
         print(fitnesses[idx])
         # Plot n best individuals
         evaluator.plotMulti(routes=trajectories[:args.n], figName=args.figName)
+        
+        morpho = BodyCheck()
+        for (genotype, _, _, _) in robots:
+            body = genotype.develop().body
+            morpho.show2D(body)
         
     else: print("Pass database name with '-name'. Closing now.")
 

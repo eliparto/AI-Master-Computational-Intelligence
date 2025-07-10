@@ -1,0 +1,8 @@
+{
+  "_Description": "Place the names of the relevant databases in the below field.",
+  "Databases": [
+    "exp_cold_1",
+    "exp_cold_2",
+    "exp_cold_3"
+  ]
+}
