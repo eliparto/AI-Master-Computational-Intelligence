@@ -5,7 +5,7 @@ In this project we investigate whether evolutionary robots find better solutions
 
 ![til](./Media/morpho.gif)
 ^ A fully evolved robot (learning done with controller inheritance) navigating from its spawn point (green) to multiple waypoints. \
-Note:\
+Note:
 - *A smooth video render is available in `/Media`.*
 - *Gif and video show sped-up motion. The video should represent motion over ~140-160 seconds in real life.*
 - *Actual locomotion was slightly different as the green/pink wayoints slightly protrude from the floor and have their own friction properties.*
