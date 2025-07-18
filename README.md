@@ -5,7 +5,10 @@ In this project we investigate whether evolutionary robots find better solutions
 
 ![til](./Media/morpho.gif)
 ^ A fully evolved robot (learning done with controller inheritance) navigating from its spawn point (green) to multiple waypoints. \
-*A smooth video render is available in `/Media`. Also note that these show sped-up motion. The video should represent motion over ~140-160 seconds in real life.*
+Note:\
+- *A smooth video render is available in `/Media`.*
+- *Gif and video show sped-up motion. The video should represent motion over ~140-160 seconds in real life.*
+- *Actual locomotion was slightly different as the green/pink wayoints slightly protrude from the floor and have their own friction properties.*
 
 ## Installation/prerequisites
 - Install [Revolve2_TL](https://github.com/eliparto/revolve2_TL); a modified version version of [Revolve2](https://github.com/eliparto/revolve2_TL) with changes to support targeted locomotion.
