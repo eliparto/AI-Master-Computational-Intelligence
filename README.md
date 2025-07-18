@@ -1,7 +1,11 @@
 # AI Master Computational Intelligence
 AI Master Project: Comparing learning with inherited controllers to learning from zero in evolutionary robots.
 
-In this project we investigate whether evolutionary robots find better solutions when using some brain optimizer with and without inhertied knowledge from the previous generation in a waypoint navigation task. We will also analyze various morphological features to examine whether the different learning methods lead to significant evolutionary changes.
+In this project we investigate whether evolutionary robots find better solutions when using some brain optimizer with and without inherted controllers from the previous generation in a waypoint navigation task. We will also analyze various morphological features to examine whether the different learning methods lead to significant evolutionary changes.
+
+![til](./Media/morpho.gif)
+^ A fully evolved robot (learning done with controller inheritance) navigating from its spawn point (green) to multiple waypoints. \
+*A smooth video render is available in `/Media`. Also note that these show sped-up motion. The video should represent motion over ~140-160 seconds in real life.*
 
 ## Installation/prerequisites
 - Install [Revolve2_TL](https://github.com/eliparto/revolve2_TL); a modified version version of [Revolve2](https://github.com/eliparto/revolve2_TL) with changes to support targeted locomotion.
