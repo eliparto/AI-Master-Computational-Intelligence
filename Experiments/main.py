@@ -28,7 +28,19 @@ from ModularEvolution import ParentSelector, SurvivorSelector, CrossoverReproduc
 from BrainOptimizer import BrainOptimizerDE
 from BodyCheck import BodyCheck
 from writeOut import writeSetup
-       
+
+# Create individual first with old_fitness initialized
+def create_individual(genotype: Genotype) -> Individual:
+    ind = Individual(
+        genotype=genotype,
+        fitness=0.0,
+        nose=-1,
+        solutions=[],
+        fitness_history = [],
+    )
+    ind.old_fitness = 0.0
+    return ind
+
 # Experiment
 def run_experiment(
         dbengine: Engine, plot: bool, inherit: bool, use_state_reset: bool
@@ -92,11 +104,11 @@ def run_experiment(
     # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness=0.0, nose = -1, solutions=[]
-                       )
+            create_individual(genotype)
             for genotype in initial_genotypes
-            ]
-        )
+        ]
+    )
+
     # Train the initial population -> Start by generating solutions and finding nose orientations
     print("\nPopulation initialized.\nTraining initial population...\n")
     population = morpho.findNose(population)
@@ -116,12 +128,19 @@ def run_experiment(
                    position = 0):
         generation.generation_index = it
 
-        if plot: # Plot fitnesses in console per generation
+        # Store current fitness as old_fitness before evolution step
+        for individual in population.individuals:
+            individual.old_fitness = individual.fitness
+
+        # Perform evolution step (this should always happen, regardless of plotting)
+        if plot:
             prev_fit = [p.fitness for p in population.individuals]
             population = modular_robot_evolution.step(population)
             curr_fit = [p.fitness for p in population.individuals]
             print(f"Run {it+1}/{config.NUM_GENERATIONS_BODY}")
             consolePlot(prev_fit, curr_fit)
+        else:
+            population = modular_robot_evolution.step(population)
 
         # Make it all into a generation and save it to the database.
         generation = Generation(

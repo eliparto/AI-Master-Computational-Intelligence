@@ -47,46 +47,68 @@ class BrainOptimizerDE(Learner):
         """
         # Generate children bodies and brains
         bodies, brains, solution_sizes = self.setupLearner(population)
+
         # Initialize child weights if inheritance is NOT chosen
-        if not self.inherit: population = self.initialSolutionsChildren(population)
+        if not self.inherit:
+            population = self.initialSolutionsChildren(population)
+
         population = self.setSolutionSizes(population, solution_sizes)
-        
+
+        for individual in population.individuals:
+            individual.old_fitness = individual.fitness
+        pre_learning_fitness = float(individual.fitness)
+
         # Learning loop
-        for idx, body in enumerate(tqdm(bodies, leave = False, position = 0)):
-            # Setup optimizer
+        for idx, body in enumerate(tqdm(bodies, leave=False, position=0)):
             cpg_network_structure, output_mapping = brains[idx]
-            
-            # Only optimize robots with at least 2 joints
+            individual = population.individuals[idx]
+
+            # Ensure fitness history exists
+            if not hasattr(individual, 'fitness_history') or individual.fitness_history is None:
+                individual.fitness_history = []
+
+            # Store pre-learning fitness
+            pre_learning_fitness = float(individual.fitness)
+
             if cpg_network_structure.num_connections > 0:
-                solutions = population.individuals[idx].solutions
-                nose = population.individuals[idx].nose
+                solutions = individual.solutions
+                nose = individual.nose
                 assert nose >= 0, "No nose orientation. Call morpho.findNose() on population."
-        
+
                 evaluator = Evaluator(
-                headless=True,
-                num_simulators=config.NUM_SIMULATORS_BRAIN,
-                cpg_network_structure=cpg_network_structure,
-                body=body,
-                output_mapping=output_mapping,
-                nose=nose,
-                targets=config.TARGETS.copy()
+                    headless=True,
+                    num_simulators=config.NUM_SIMULATORS_BRAIN,
+                    cpg_network_structure=cpg_network_structure,
+                    body=body,
+                    output_mapping=output_mapping,
+                    nose=nose,
+                    targets=config.TARGETS.copy()
                 )
-                
+
                 sol_t, sol_c = self.generate_T_C(solutions)
-                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
-                                leave = False):
+                for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN), leave=False):
                     sol_next_gen, max_fit = self.optimize(sol_t, sol_c, evaluator)
                     sol_t, sol_c = self.generate_T_C(sol_next_gen)
-                    
-                # Update fitness and solutions
-                population.individuals[idx].solutions = sol_next_gen[0].flatten('C').tolist()
-                population.individuals[idx].fitness = max_fit
- 
-            # TODO: Do something when no. of hinges is not enough to optimize
+
+                individual.solutions = sol_next_gen[0].flatten('C').tolist()
+                individual.fitness = max_fit
             else:
-                population.individuals[idx].fitness = -10.0
-                
+                individual.fitness = -10.0
+
+            # Now compute and store learning delta
+            post_learning_fitness = float(individual.fitness)
+            individual.learning_delta = post_learning_fitness - pre_learning_fitness
+            individual.fitness_history.append([
+                pre_learning_fitness,
+                post_learning_fitness,
+                individual.learning_delta
+            ])
+
+
+
         return population
+
+
     
     def generateTargets(self) -> npt.NDArray[np.float_]:
         """

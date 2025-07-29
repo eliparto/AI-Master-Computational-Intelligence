@@ -76,20 +76,18 @@ class SurvivorSelector(Selector):
     def select(
         self, population: Population, children: Population
     ) -> Population:
-        """
-        Select survivors using a tournament.
-
-        :param population: The population the parents come from.
-        :param children: Population of children.
-        :returns: A newly created population.
-        :raises ValueError: If the population is empty.
-        """
+        """Select survivors using a tournament."""
         
-        # Retrieve information from children        
+        # Retrieve info from children
         (
-            off_genotypes, off_fitnesses, off_solutions, off_noses
+            off_genotypes,
+            off_fitnesses,
+            off_old_fitnesses,
+            off_solutions,
+            off_noses
         ) = self.setupChildren(children)
-        
+
+        # Perform steady-state selection
         original_survivors, offspring_survivors = population_management.steady_state(
             old_genotypes=[i.genotype for i in population.individuals],
             old_fitnesses=[i.fitness for i in population.individuals],
@@ -105,33 +103,41 @@ class SurvivorSelector(Selector):
             ),
         )
 
-        return (
-            Population(
-                individuals=[
-                    Individual(
-                        genotype=population.individuals[i].genotype,
-                        fitness=population.individuals[i].fitness,
-                        solutions=population.individuals[i].solutions,
-                        nose=population.individuals[i].nose,
-                    )
-                    for i in original_survivors
-                ]
-                + [
-                    Individual(
-                        genotype=off_genotypes[i],
-                        fitness=off_fitnesses[i],
-                        solutions=off_solutions[i],
-                        nose=off_noses[i],
-                    )
-                    for i in offspring_survivors
-                ]
+        # Build new population with proper old_fitness handling
+        individuals = []
+
+        for i in original_survivors:
+            orig = population.individuals[i]
+            ind = Individual(
+                genotype=orig.genotype,
+                fitness=orig.fitness,
+                solutions=orig.solutions,
+                nose=orig.nose,
+                fitness_history=orig.fitness_history.copy() if orig.fitness_history else [],
             )
-        )
+            ind.old_fitness = orig.old_fitness
+            individuals.append(ind)
+
+        for i in offspring_survivors:
+            ind = Individual(
+                genotype=off_genotypes[i],
+                fitness=off_fitnesses[i],
+                solutions=off_solutions[i],
+                nose=off_noses[i],
+                fitness_history=children.individuals[i].fitness_history.copy() if children.individuals[i].fitness_history else [],
+            )
+            ind.old_fitness = off_old_fitnesses[i]
+            individuals.append(ind)
+
+        return Population(individuals=individuals)
+
+
     
     def setupChildren(
             self, children: Population
             ) -> tuple[list[Genotype], 
                        list[float], 
+                       list[float],
                        list[npt.NDArray[np.float_]], 
                        list[int]]:
         """
@@ -142,6 +148,7 @@ class SurvivorSelector(Selector):
         
         genotypes = []
         fitnesses = []
+        old_fitnesses = []
         solutions = []
         noses = []
         
@@ -150,8 +157,9 @@ class SurvivorSelector(Selector):
             fitnesses.append(child.fitness)
             solutions.append(child.solutions)
             noses.append(child.nose)
+            old_fitnesses.append(child.old_fitness)
             
-        return (genotypes, fitnesses, solutions, noses)
+        return (genotypes, fitnesses, old_fitnesses, solutions, noses)
 
 class CrossoverReproducer(Reproducer):
     """A simple crossover reproducer using multineat."""
@@ -202,14 +210,20 @@ class CrossoverReproducer(Reproducer):
         ]
     
         # Output population of children (no fitnesses/solutions yet)
-        children = Population(
-            individuals = [
-                Individual(genotype=g_child, fitness=0.0, 
-                           solutions=[], nose = -1
-                           )
-                for g_child in offspring_genotypes
-                ]
-            )
+        individuals = []
+        for g_child in offspring_genotypes:
+            ind = Individual(
+            genotype=g_child,
+            fitness=0.0,
+            nose=-1,
+            solutions=[],
+            fitness_history=[],
+        )
+            ind.old_fitness = 0.0
+            individuals.append(ind)
+
+        children = Population(individuals=individuals)
+
         
         # Inherit knowledge from parent if prompted to
         if self.inherit: children = self.insertSolution(
