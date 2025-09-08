@@ -1,7 +1,7 @@
 # Experiments
 Run these Python scripts in the terminal with `-h` to see their arguments.
 ## Running experiments
-- `main.py`: Main experimetnation script.
+- `main.py`: Run experiments from here.
 - `BrainOptimizer.py`: Differential Evolution implementation for controller learning.
 - `ModularEvolution.py`: Classes for the various steps of brain/body evolution (parent/survivor selection, crossover/mutation).
 - `evaluator_brain_targeted_locomotion.py`: Evaluator class to run simulations and retrieve fitnesses.
