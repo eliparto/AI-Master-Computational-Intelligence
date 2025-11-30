@@ -31,14 +31,15 @@ from writeOut import writeSetup
        
 # Experiment
 def run_experiment(
-        dbengine: Engine, plot: bool, inherit: bool, use_state_reset: bool
-        ) -> None:
+        dbengine: Engine, plot: bool, inherit: bool, learning_delta: bool, 
+        use_state_reset: bool) -> None:
     """
     Run an experiment.
 
     :param dbengine: An opened database with matching initialize database structure.
     :param plot: Bool to toggle per-generaration in-console fitness plotting.
     :param inherit: Bool to toggle inherited knowledge (weight inheritance).
+    :param learning_delta: Bool to toggle learning delta tracking.
     :param newState: Bool to toggle CPGs with state-array resetting when changing actions.
     """
     # Set up and create experiment instance
@@ -65,6 +66,7 @@ def run_experiment(
     morpho = BodyCheck()
     learner = BrainOptimizerDE(
         bounds=config.BOUNDS, use_state_reset=use_state_reset, inherit=inherit,
+        learning_delta=learning_delta
     )    
     parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
     survivor_selector = SurvivorSelector(rng=rng)
@@ -92,7 +94,8 @@ def run_experiment(
     # Create the initial population (0 fitness and no solution)
     population = Population(
         individuals=[
-            Individual(genotype=genotype, fitness=0.0, nose = -1, solutions=[]
+            Individual(genotype=genotype, fitness_start=0.0, fitness=0.0,
+                       nose = -1, solutions=[]
                        )
             for genotype in initial_genotypes
             ]
@@ -140,6 +143,7 @@ def main() -> None:
     parser.add_argument("-r", action="store_true", help="Remove the prior log.")
     parser.add_argument("-p", action="store_true", help="Plot fitnesses per generation.")
     parser.add_argument("-i", action="store_true", help="Use inherited knowledge.")
+    parser.add_argument("-l", action="store_true", help="Implement learning delta tracking.")
     parser.add_argument("-e", action="store_true", help="Add to simulate using state-resetting.")
 
     args = parser.parse_args()
@@ -173,7 +177,8 @@ def main() -> None:
     for i in range(config.NUM_REPETITIONS_BODY):
         print(f"Experiment no. {i+1}/{config.NUM_REPETITIONS_BODY}:")
         run_experiment(
-            dbengine=dbengine, plot=args.p, use_state_reset=args.e, inherit=args.i
+            dbengine=dbengine, plot=args.p, use_state_reset=args.e, 
+            inherit=args.i, learning_delta=args.l
             )
 
 def save_to_db(dbengine: Engine, generation: Generation) -> None:

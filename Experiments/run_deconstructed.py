@@ -69,7 +69,7 @@ with Session(dbengine) as session:
 innov_db_body = multineat.InnovationDatabase()
 innov_db_brain = multineat.InnovationDatabase()
 
-learner = BrainOptimizerDE(bounds, use_state_reset=True, inherit=False)    
+learner = BrainOptimizerDE(bounds, use_state_reset=True, inherit=True, learning_delta=True)    
 parent_selector = ParentSelector(offspring_size=config.OFFSPRING_SIZE, rng=rng)
 survivor_selector = SurvivorSelector(rng=rng)
 crossover_reproducer = CrossoverReproducer(
@@ -99,8 +99,10 @@ initial_genotypes = [
 # Create the initial population (0 fitness and no solution)
 population = Population(
     individuals=[
-        Individual(genotype=genotype, fitness=0.0, nose = -1, solutions=[]
-                   )
+        Individual(
+            genotype=genotype, fitness_start=0.0, fitness=0.0, 
+            nose = -1, solutions=[]
+            )
         for genotype in initial_genotypes
         ]
     )

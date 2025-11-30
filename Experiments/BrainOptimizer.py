@@ -24,18 +24,22 @@ from revolve2.experimentation.evolution.abstract_elements import Learner
 
 class BrainOptimizerDE(Learner):
     """Optimizer class (Differential Evolution)"""
+    # TODO: Remove solutions vector reshapiing -> redundant
     
     def __init__(
-            self, bounds: tuple[float], use_state_reset: bool, inherit: bool,
+            self, bounds: tuple[float], use_state_reset: bool, 
+            inherit: bool, learning_delta: bool
             ) -> None:
         """
         :param bounds: Target spawn bounds (deprecated).
         :param newState: Bool to toggle using new state-array when switching actions.
         :param inherit: Bool to inherit weights from parents.
+        :param learning_delta: Bool to apply learning delta tracking.
         """
         self.bounds = bounds
         self.use_state_reset = use_state_reset
         self.inherit = inherit
+        self.learning_delta = learning_delta
         
     def learn(
             self, population: Population, **kwargs: Any,) -> Population:
@@ -72,6 +76,9 @@ class BrainOptimizerDE(Learner):
                 targets=config.TARGETS.copy()
                 )
                 
+                # Record the untrained brain's fitness 
+                if self.learning_delta: ...
+                
                 sol_t, sol_c = self.generate_T_C(solutions)
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
                                 leave = False):
@@ -88,7 +95,7 @@ class BrainOptimizerDE(Learner):
                 
         return population
     
-    def generateTargets(self) -> npt.NDArray[np.float_]:
+    def _generateTargets(self) -> npt.NDArray[np.float_]:
         """
         [DEPRECATED] Generate list of target coordinates for robots to navigate to.
         """
@@ -139,6 +146,17 @@ class BrainOptimizerDE(Learner):
         T = np.clip(T, a_min=-1.0, a_max=1.0)
         
         return T, C
+    
+    def dummyRun(self, solution: list[float], evaluator) -> float:
+        """
+        Dummy simulation run to e.g. quickly record the fitness for a solutions vector.
+        """
+        fitnesses, _ = evaluator.evaluate(
+            solutions=[solution],
+            sim_time=config.SIM_TIME,
+            use_state_reset=self.use_state_reset)
+        
+        return fitnesses[0]
     
     def optimize(
             self, T: npt.NDArray[np.float_], C: npt.NDArray[np.float_],

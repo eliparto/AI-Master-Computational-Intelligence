@@ -94,7 +94,7 @@ class Evaluator:
         :param sim_time: Simulation time in seconds. Set to None for indefinite simulation.
         :returns: Fitnesses of the solutions.
         """
-
+        # TODO: Modularize code
         if use_state_reset:     # Simulate with state-array resetting when chainging actions
             robots = [
                 ModularRobot(
