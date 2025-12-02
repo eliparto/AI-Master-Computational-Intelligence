@@ -110,6 +110,7 @@ class SurvivorSelector(Selector):
                 individuals=[
                     Individual(
                         genotype=population.individuals[i].genotype,
+                        fitness_start=population.individuals[i].fitness_start,
                         fitness=population.individuals[i].fitness,
                         solutions=population.individuals[i].solutions,
                         nose=population.individuals[i].nose,
@@ -119,6 +120,7 @@ class SurvivorSelector(Selector):
                 + [
                     Individual(
                         genotype=off_genotypes[i],
+                        fitness_start=0.0,
                         fitness=off_fitnesses[i],
                         solutions=off_solutions[i],
                         nose=off_noses[i],
@@ -204,7 +206,7 @@ class CrossoverReproducer(Reproducer):
         # Output population of children (no fitnesses/solutions yet)
         children = Population(
             individuals = [
-                Individual(genotype=g_child, fitness=0.0, 
+                Individual(genotype=g_child, fitness_start=0.0, fitness=0.0, 
                            solutions=[], nose = -1
                            )
                 for g_child in offspring_genotypes

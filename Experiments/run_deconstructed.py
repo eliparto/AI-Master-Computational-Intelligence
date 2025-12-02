@@ -112,3 +112,10 @@ generation = Generation(
     experiment=experiment, generation_index=0, population=population,
 )
 save_to_db(dbengine, generation)
+
+# INTIIALIZATION
+# print("Setting up initial population.")
+# population = morpho.findNose(population)
+# population = learner.initialSolutions(population)
+# population = learner.learn(population)
+# print("Initial population ready.")

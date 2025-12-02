@@ -77,7 +77,11 @@ class BrainOptimizerDE(Learner):
                 )
                 
                 # Record the untrained brain's fitness 
-                if self.learning_delta: ...
+                if self.learning_delta: 
+                    # Only check initial fitness for children
+                    if population.individuals[idx].fitness_start == 0.0:
+                        fit_start = self.dummyRun(solutions, evaluator)
+                        population.individuals[idx].fitness_start = fit_start
                 
                 sol_t, sol_c = self.generate_T_C(solutions)
                 for gen in tqdm(range(config.NUM_GENERATIONS_BRAIN),
